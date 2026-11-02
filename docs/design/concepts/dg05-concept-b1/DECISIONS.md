@@ -132,7 +132,18 @@ Other checks:
 
 The coordinating Codex agent (GPT-6 Astra, xhigh) applied the small review corrections after GPT-6.1 Sol High round 1. The focus-detail composite now carries its own sample-input and illustrative-rating disclaimer; the crop and caption pixels are unchanged, with the label added below them. The comparison's 1:1 toggle now uses each PNG's native dimensions and restores its fitted dimensions when checked again. The branch labels above and in the ledger were corrected.
 
-A scratch browser check at DPR 1 failed before the viewer fix: the zoom PNG was 1920×1080 but displayed at 960×540 with Fit unchecked. After the fix, all six images match their native dimensions, a fit/native/fit round trip restores the fitted layout, and both saved preference values initialize correctly. Two builds agree, all five board PNGs and their measurements are unchanged, and the six embedded frame copies match the PNGs. These checks exercise the comparison viewer only. See [the review ledger](../../../reviews/dg05-concept-b1-sol-loop.md) and issues [#13](https://github.com/AMattHT/MaddenTool/issues/13) and [#14](https://github.com/AMattHT/MaddenTool/issues/14); a Sol delta review is still pending.
+A scratch browser check at DPR 1 failed before the viewer fix: the zoom PNG was 1920×1080 but displayed at 960×540 with Fit unchecked. After the fix, all six images match their native dimensions, a fit/native/fit round trip restores the fitted layout, and both saved preference values initialize correctly. Two builds agree, all five board PNGs and their measurements are unchanged, and the six embedded frame copies match the PNGs. These checks exercise the comparison viewer only. See [the review ledger](../../../reviews/dg05-concept-b1-sol-loop.md) and issues [#13](https://github.com/AMattHT/MaddenTool/issues/13) and [#14](https://github.com/AMattHT/MaddenTool/issues/14).
+
+### Review
+
+The package was reviewed in two rounds with GPT-6.1 Sol on High.
+
+- **Round 1** audited the full package at `45845ea` and asked for changes: S1 and S2 (should) and S3 (nit).
+- **Round 2** was a delta review of `45845ea..6af344d`, covering those fixes and the artifacts they changed.
+  - It approved at `6af344dc3427bbe1018dc199f1b39fc95c6eb144` with no new findings.
+  - It was not a repeat audit of the five unchanged board frames, and it is not a GitHub human review.
+
+Later commits change only the status wording in the records. Static frames remain static: no keyboard, assistive-technology or game behaviour has been tested.
 
 ## Data shown
 
