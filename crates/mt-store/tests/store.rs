@@ -150,6 +150,30 @@ fn wrong_format_is_refused_and_writes_nothing() {
 }
 
 #[test]
+fn info_counts_missing_wav_without_treating_it_as_zero() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("missing-wav.csv");
+    let input = std::fs::read_to_string(fixture(NFL_V1)).unwrap();
+    let header = input.lines().next().unwrap();
+    let missing = input
+        .lines()
+        .find(|line| line.contains("Synthetic Charlie"))
+        .unwrap();
+    std::fs::write(&path, format!("{header}\n{missing}\n")).unwrap();
+    let mut import = nfl(NFL_V1, "2026-10-28");
+    import.file = path;
+    let mut store = Store::open(&dir.path().join("players.db")).unwrap();
+    store.import(&import).unwrap();
+
+    let info = store.info().unwrap();
+    assert_eq!(info.players, 1);
+    assert_eq!(info.formats.len(), 1);
+    assert_eq!(info.formats[0].wav_missing, 1);
+    assert_eq!(info.formats[0].wav_zero, 0);
+    assert_eq!(store.players_by_year(2001, None).unwrap()[0].wav, None);
+}
+
+#[test]
 fn missing_zero_and_placeholder_wav_stay_distinct() {
     let dir = tempfile::tempdir().unwrap();
     let mut store = Store::open(&dir.path().join("p.db")).unwrap();

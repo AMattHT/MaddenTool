@@ -226,7 +226,7 @@ pub fn info(conn: &Connection, schema_version: i64) -> Result<Info> {
     let count = |sql: &str| -> Result<i64> { Ok(conn.query_row(sql, [], |r| r.get(0))?) };
     let mut stmt = conn.prepare(
         "SELECT format, count(*), min(draft_year), max(draft_year),
-                sum(wav IS NULL), sum(wav = 0)
+                sum(wav IS NULL), coalesce(sum(wav = 0), 0)
          FROM source_record GROUP BY format ORDER BY format",
     )?;
     let formats = stmt
