@@ -134,7 +134,18 @@ Published as a ready-for-review PR from `t3/reusable-player-database` against `m
 
 Status: **implemented and proven locally on the RL1 template; committed on the task branch, not pushed.** No PR yet.
 
-Sol round 1 (GPT-6.1 Sol, High, at `6911c423`) returned **CHANGES**: two test-validity findings, S1 and S2, and no reader bug. Both are fixed on the branch in `84a4a3e9` and await a round 2 delta review. The ledger is `reviews/dg02-sol-loop.md`.
+**Code approved by Sol at `fabcd3ea`, after two GPT-6.1 Sol High rounds.** This is an AI review, not a GitHub human approval. The ledger is `reviews/dg02-sol-loop.md`.
+
+- Round 1 (`6911c423`) returned CHANGES: two test-validity findings, S1 and S2, and no reader bug.
+- Both were fixed in `84a4a3e9`.
+- Round 2, scoped to `6911c423..fabcd3ea` and its callers, approved with no new findings.
+
+**DG02 is not complete.** Two acceptance gates remain:
+
+- the TEMP1 to TEMP3 (RL4) required-mode real-file and differential run;
+- three-OS CI.
+
+The branch is being published as a **draft** PR to start CI. The draft is deliberate: acceptance is incomplete.
 
 | Field | Value |
 |---|---|

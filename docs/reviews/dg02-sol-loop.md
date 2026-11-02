@@ -2,14 +2,36 @@
 
 Package DG02, branch `t3/8830e17a` (T3 displays it as `t3/m27-draft-reader`), base `main` at `2f1da5728b1d058f5273020ee6515941df509899` (DG01 merged). The parent coordinates GPT-6.1 Sol High reviews. The implementer records findings and dispositions here.
 
-**Approval status: round 1 returned CHANGES. Both findings are fixed on the branch in `84a4a3e9d0066335077eaff519fd78a7e02129d0`, awaiting the round 2 delta review.** Nothing is pushed and no PR exists.
+**Approval status: code approved by Sol at `fabcd3ea313b7b1c34cb17c47d886811eb729fe9`.** This is a GPT-6.1 Sol review, not a GitHub human approval, and it does not complete DG02. The approval rests on two rounds:
+
+- Round 1 reviewed the whole reader at `6911c423` and returned CHANGES.
+- Round 2 was scoped to `6911c423..fabcd3ea` and its callers, and approved it. It was not a repeat of the full reader audit.
+
+Two acceptance gates stay open, and the reviewer preserved both explicitly:
+
+- the TEMP1 to TEMP3 (RL4) real-file and differential run in required mode;
+- three-OS CI.
 
 ## Rounds
 
 | Round | Reviewer | Head reviewed | Verdict |
 |---|---|---|---|
 | 1 | GPT-6.1 Sol, High | `6911c423045a49a026f2156223defa25663c898e` | **CHANGES.** S1 and S2 (should); no reader decoding or byte-preservation bug |
-| 2 | GPT-6.1 Sol, High, scoped to S1/S2 and the changed code | pending | pending |
+| 2 | GPT-6.1 Sol, High, scoped to `6911c423..fabcd3ea` and its callers | `fabcd3ea313b7b1c34cb17c47d886811eb729fe9` | **APPROVE.** S1 and S2 resolved, no new findings. RL4 and CI gates preserved |
+
+Round 2 checks, as the parent relayed them from the reviewer thread:
+
+- fmt and a check of the delta diff;
+- clippy on the draft crate, all targets;
+- the 39 always-run tests, plus the 3 opt-in tests run explicitly unconfigured;
+- 24 direct configuration and template checks:
+  - S1: every opt-in test fails in required mode without fixture setup. A missing oracle gives the correct variable diagnostic before TEMP1. Optional skips are preserved. A nonexistent, empty or hash-invalid directory still fails without the oracle.
+  - S2: the slot check precedes comparisons in both paths. Corrupting only slot 388's hash fails. Authentic output passes.
+- 10 adapter runs: repeated, missing and reordered slots all fail;
+- the child-process regressions run in parallel under an invalid parent environment;
+- template totals: 389 players, 31,120 comparisons, 778 constant checks, 389 visuals, 455 record hashes, 0 discrepancies. SHA-256 and mtime unchanged.
+
+The reviewer's checkout was clean at `fabcd3ea` afterwards.
 
 Round 1 checks, as the parent relayed them:
 
