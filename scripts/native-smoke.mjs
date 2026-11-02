@@ -225,10 +225,12 @@ async function smokeWindows() {
     // so the failure is injected at the IPC HTTP layer rather than by patching JavaScript.
     await cdp.send("Page.enable");
     let injected = false;
+    const ipcRequests = [];
     cdp.onEvent = (event) => {
       if (event.method !== "Fetch.requestPaused") return;
       const { requestId, request } = event.params;
-      if (injected || request.method !== "POST") {
+      ipcRequests.push(`${request.method} ${request.url}`);
+      if (injected || request.method !== "POST" || !request.url.includes("get_app_info")) {
         void cdp.send("Fetch.continueRequest", { requestId });
         return;
       }
@@ -248,7 +250,12 @@ async function smokeWindows() {
     await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*ipc.localhost*" }] });
     await cdp.send("Page.reload");
     const retryButton = `document.querySelector('[role="alert"] button')`;
-    await until("the injected error state", () => cdp.evaluate(`!!${retryButton}`));
+    await until("the injected error state", () => cdp.evaluate(`!!${retryButton}`), 20_000).catch(
+      async (error) => {
+        const page = await cdp.evaluate(READ_FACTS).catch(() => "unreadable");
+        throw new Error(`${error.message}; ipc=${JSON.stringify(ipcRequests)}; page=${page}`);
+      },
+    );
     const errorText = await cdp.evaluate(`document.querySelector('[role="alert"]').textContent`);
     if (!/unexpected app information/i.test(errorText)) throw new Error(`Error: ${errorText}`);
     await cdp.send("Emulation.setDeviceMetricsOverride", {

@@ -56,8 +56,8 @@ def D(fid, family, op, ev, beh, deps, rust, ui, test, wp, app="applicable", runt
     add(fid, "Draft generator", DG_V, family, op, ev, beh, deps, rust, ui, test, wp, runtime, app, status)
 
 
-def X(fid, family, op, ev, beh, deps, rust, ui, test, wp):
-    add(fid, "Binding requirement", "design + OPUS-MASTER", family, op, ev, beh, deps, rust, ui, test, wp, R_X)
+def X(fid, family, op, ev, beh, deps, rust, ui, test, wp, runtime=R_X, status="discovered"):
+    add(fid, "Binding requirement", "design + OPUS-MASTER", family, op, ev, beh, deps, rust, ui, test, wp, runtime, status=status)
 
 
 # Rust owners
@@ -88,7 +88,8 @@ X("XP-011", "Save safety", "Transactional commit", "design; MF saves in place (f
 X("XP-012", "Save safety", "External-change conflict", "MF franchise-file-changed; design", "A changed source blocks the commit and offers reload or save as a new file.", "XP-011", CO, "ui/files", "Modify the source between preview and commit; the commit refuses with a clear message.", "02b")
 X("XP-013", "Save safety", "Disk-full, locked file and interrupted process", "design", "Failures are reported and the source stays intact; orphan temps are found on next launch.", "XP-011", CO, "ui/files", "Simulate ENOSPC and a Windows sharing violation; kill the process mid-commit.", "02b")
 X("XP-014", "Format", "Refuse other games and unknown versions", "MF franchise:open rejects non-M27; legacy detectGame uses size only", "M26, CFB and unknown M27 schemas are refused for editing with a useful message.", "", CO, "ui/files", "M26 career save and CFB-schema input are refused; unknown schema major opens read-only or not at all.", "02a")
-X("XP-015", "Licensing", "Third-party notices and asset provenance", "SOURCES.md; audit section 8", "Shipped material has a recorded right to ship; proprietary art and saves stay out of the repo.", "", "", "ui/about", "Release check fails on any file not listed in the provenance manifest.", "01a")
+X("XP-015", "Licensing", "Third-party notices and asset provenance", "SOURCES.md; audit section 8", "Shipped material has a recorded right to ship; proprietary art and saves stay out of the repo.", "", "", "ui/about", "Release check fails on any file not listed in the provenance manifest.", "01a",
+  runtime="WP01a: manifest and check run in the gate and fail on planted unlisted files and save data. Not yet covered: npm and Cargo dependency notices, ui/about, a release package.", status="implemented")
 X("XP-016", "Delivery", "Parity ledger and delivery ledger gate", "design; roadmap", "Each applicable row reaches runtime-verified or carries a precise blocker.", "", "", "", "verify_parity.py passes and no applicable row is below runtime-verified at release.", "11c")
 
 # -------------------------------------------------------------------------- MF: file and session
