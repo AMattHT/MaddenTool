@@ -69,7 +69,7 @@ Not verified: CI, macOS and Linux runtime, any rating or calibration, any M27 fi
 
 ### DG01 identity reconciliation and round 1 findings (2026-11-02)
 
-Status: **committed on the branch, not pushed; no Sol approval yet.** Round 1 (GPT-6.1 Sol, xhigh) asked for changes; the ledger is `reviews/dg01-sol-loop.md`. Issues [#2](https://github.com/AMattHT/MaddenTool/issues/2) (S1), [#3](https://github.com/AMattHT/MaddenTool/issues/3) (S2) and [#4](https://github.com/AMattHT/MaddenTool/issues/4) (AFL/NFL duplicates, user-reported) stay open until their fixes reach `main`.
+Status: **committed on the branch at `cd6f6e0` (S1 and U1 fix; S2 fixed in `472a4c3`), not pushed; no Sol approval yet.** Round 1 (GPT-6.1 Sol, xhigh) asked for changes; the ledger is `reviews/dg01-sol-loop.md`. Issues [#2](https://github.com/AMattHT/MaddenTool/issues/2) (S1), [#3](https://github.com/AMattHT/MaddenTool/issues/3) (S2) and [#4](https://github.com/AMattHT/MaddenTool/issues/4) (AFL/NFL duplicates, user-reported) stay open until their fixes reach `main`.
 
 AFL/NFL identity is now part of DG01, not DG04a. Schema v2 adds:
 
