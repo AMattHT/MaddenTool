@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "path": "docs/reference/tstack/**",
+      "origin": "third-party",
+      "source": "https://github.com/t3dotgg/tstack at 1085050f3baed1ac724caa4a8166145fb2ac88af",
+      "license": "MIT",
+      "ships": false,
+      "notes": "PR workflow skills, retained with their LICENSE. Not part of the application."
+    },
+    {
+      "path": "docs/reference/*-inventory.json",
+      "origin": "derived-metadata",
+      "license": "UNLICENSED",
+      "ships": false,
+      "notes": "Route, IPC and component names plus hashes from local read-only inspection. No reference code or assets."
+    },
+    {
+      "path": "docs/reference/audit/**",
+      "origin": "derived-metadata",
+      "license": "UNLICENSED",
+      "ships": false,
+      "notes": "Audit scripts and derived symbol maps. Input data stays outside the repository."
+    },
+    {
+      "path": "app/src-tauri/icons/**",
+      "origin": "original",
+      "license": "UNLICENSED",
+      "ships": true,
+      "notes": "Original mark in source.svg; other files are generated from it by `tauri icon`."
+    },
+    { "path": "docs/**", "origin": "original", "license": "UNLICENSED", "ships": false },
+    { "path": "app/src-tauri/**", "origin": "original", "license": "UNLICENSED", "ships": true },
+    { "path": "ui/**", "origin": "original", "license": "UNLICENSED", "ships": true },
+    { "path": "scripts/**", "origin": "original", "license": "UNLICENSED", "ships": false },
+    { "path": ".github/**", "origin": "original", "license": "UNLICENSED", "ships": false },
+    {
+      "path": "package-lock.json",
+      "origin": "generated",
+      "license": "UNLICENSED",
+      "ships": false,
+      "notes": "Dependency lockfile. Third-party dependency notices are a WP11 release gate."
+    },
+    {
+      "path": "Cargo.lock",
+      "origin": "generated",
+      "license": "UNLICENSED",
+      "ships": false,
+      "notes": "Dependency lockfile. Third-party dependency notices are a WP11 release gate."
+    },
+    { "path": ".*", "origin": "original", "license": "UNLICENSED", "ships": false },
+    { "path": "*.json", "origin": "original", "license": "UNLICENSED", "ships": false },
+    { "path": "*.toml", "origin": "original", "license": "UNLICENSED", "ships": false },
+    { "path": "*.js", "origin": "original", "license": "UNLICENSED", "ships": false },
+    { "path": "README.md", "origin": "original", "license": "UNLICENSED", "ships": false }
+  ]
+}
