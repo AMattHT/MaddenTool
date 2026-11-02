@@ -132,7 +132,9 @@ Published as a ready-for-review PR from `t3/reusable-player-database` against `m
 
 ## DG02 Madden 27 draft-class reader
 
-Status: **implemented and proven locally on the RL1 template; committed on the task branch, not pushed.** No PR yet. The parent obtains the GPT-6.1 Sol High review (`reviews/dg02-sol-loop.md`) before publishing.
+Status: **implemented and proven locally on the RL1 template; committed on the task branch, not pushed.** No PR yet.
+
+Sol round 1 (GPT-6.1 Sol, High, at `6911c423`) returned **CHANGES**: two test-validity findings, S1 and S2, and no reader bug. Both are fixed on the branch in `84a4a3e9` and await a round 2 delta review. The ledger is `reviews/dg02-sol-loop.md`.
 
 | Field | Value |
 |---|---|
@@ -155,9 +157,28 @@ Evidence (Windows 11 x64, Rust 1.99.0, Node 24.17.0); details in `../crates/mt-d
 
 **Not verified:**
 
-- **TEMP1, TEMP2 and TEMP3** (RL4) were not on this machine, so their real-file and differential runs are still owed. They run with one command once copies are in `MADDENTOOL_FIXTURES`.
+- **TEMP1, TEMP2 and TEMP3** (RL4) have not been read. DG02 was built on the user's laptop, which has no Madden 27 and no copies of them; the originals are on the user's desktop PC. The required-mode run (`MADDENTOOL_REQUIRE_FIXTURES=1`, command in the crate README) is a pending acceptance gate. The template and synthetic tests do not stand in for RL4.
 - **CI** has not run. The three-OS workflow is unrun until the branch is pushed.
 - **macOS and Linux at runtime.**
 - **Game acceptance** of any file.
 
 New finding: the legacy `birthdate` decode does not fit the template's values (decoded years range from 1940 to 2067 for 21-to-24-year-olds). The reader exposes the raw U16 only. DG04c must re-derive the encoding before generating birthdates.
+
+### DG02-FIX-1: Sol round 1 findings
+
+| Finding | Root cause | Issue | Status |
+|---|---|---|---|
+| S1 | Required mode skipped instead of failing when `MADDENTOOL_FIXTURES` or `MADDENTOOL_LEGACY_MDG` was unset | [#7](https://github.com/AMattHT/MaddenTool/issues/7) | Fixed on branch in `84a4a3e9`, PR pending |
+| S2 | The differential never checked that `inspect --json` reported each active slot exactly once, so 389 copies of slot 0 passed | [#8](https://github.com/AMattHT/MaddenTool/issues/8) | Fixed on branch in `84a4a3e9`, PR pending |
+
+The fix touches test support, two test files and the crate README only; no reader or CLI code changed.
+
+| Check (Windows 11 x64, Rust 1.99.0, Node 24.17.0) | Result |
+|---|---|
+| Red, against `6911c423` behaviour | 4 of the 6 new regressions failed for the reported reasons. The 2 optional-skip regressions passed, as intended |
+| fmt; clippy `--workspace --all-targets -D warnings`; `cargo test --workspace --locked` | Pass. mt-draft-format: 39 always-run tests (2 unit, 26 reader, 5 CLI, 6 regressions) plus 3 opt-in tests that skip without fixtures. mt-store: 37, unchanged |
+| CLI smoke and the CI skip-report step, locally in Git Bash | Pass |
+| Template, real-file and differential runs (optional mode, legacy `9a4ac69f`) | 389 players, 31,898 field values, 15,949 unknown bytes all zero. Differential: 31,120 field comparisons, 778 declared-constant checks, 389 visuals, 455 record hashes, 0 discrepancies. SHA-256 `b62bbe81…7ab3` unchanged by `inspect` |
+| Repeated-slot adapter | Before the fix, both opt-in suites passed with it. After the fix, both fail (exit 101, 388 slots missing, slot 0 repeated) |
+
+Required mode has not been run to a pass: it needs TEMP1 to TEMP3.
