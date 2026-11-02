@@ -6,6 +6,14 @@ use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
 use tauri::webview::InvokeRequest;
 
+// The origin Tauri treats as local on this platform, matching its private `protocol::origin`.
+// Any other origin is remote, and remote requests are refused before reaching a command.
+const LOCAL_ORIGIN: &str = if cfg!(any(windows, target_os = "android")) {
+    "http://tauri.localhost"
+} else {
+    "tauri://localhost"
+};
+
 fn invoke(cmd: &str) -> Result<Value, Value> {
     let app = with_commands(mock_builder())
         .build(mock_context(noop_assets()))
@@ -19,7 +27,7 @@ fn invoke(cmd: &str) -> Result<Value, Value> {
             cmd: cmd.into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "http://tauri.localhost".parse().expect("valid url"),
+            url: LOCAL_ORIGIN.parse().expect("valid url"),
             body: InvokeBody::default(),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),
@@ -45,7 +53,12 @@ fn get_app_info_is_reachable_through_ipc_as_camel_case() {
 
 #[test]
 fn unknown_commands_are_rejected() {
-    assert!(invoke("read_file").is_err());
+    // The exact message shows the command table refused it, not the remote-origin guard,
+    // whose error would also satisfy a bare `is_err()`.
+    assert_eq!(
+        invoke("read_file"),
+        Err(json!("Command read_file not found"))
+    );
 }
 
 fn manifest(text: &str) -> Value {

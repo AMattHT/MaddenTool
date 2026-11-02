@@ -62,12 +62,25 @@ CI definition, passing builds and runtime proof are separate, so they are listed
 |---|---|---|---|---|
 | Windows x64 | `windows-2025` | Defined | Locally | Local real window, full level above |
 | Linux x64 | `ubuntu-24.04` | Defined | Not yet observed | None yet. CI smoke reads the DOM through `tauri-driver` under `xvfb` |
-| macOS arm64 | `macos-15` | Defined | Not yet observed | None yet. CI smoke is process-start only, because WKWebView has no WebDriver |
+| macOS arm64 | `macos-15` | Failed on `ea67c86`, correction pending CI | Not yet observed | None yet. CI smoke is process-start only, because WKWebView has no WebDriver |
 | macOS x64 | `macos-15-intel` | Defined | Not yet observed | None yet. CI smoke is process-start only |
+
+### CI correction: IPC test origin
+
+Run `41394717028` on `ea67c86`, macOS arm64 job `125113620544`, failed in `cargo test`. `get_app_info_is_reachable_through_ipc_as_camel_case` panicked at `app/src-tauri/tests/ipc.rs:33` with `get_app_info not allowed. Plugin not found`. The other 4 Rust tests passed, and the bundle and smoke steps were skipped. The other three jobs were still running when this was written.
+
+The defect was in the test, not the product. It hardcoded `http://tauri.localhost`, which Tauri 2.12.5 treats as local only on Windows and Android. Elsewhere its local origin is `tauri://localhost` (`protocol::origin`, `Webview::is_local_url`), so the request counted as remote and the remote-origin guard refused it.
+
+- The test now selects the origin with the same platform condition as Tauri. Product code, capabilities and CSP are unchanged.
+- `unknown_commands_are_rejected` passed on macOS for the wrong reason: the same guard refused `read_file`. It now requires `Command read_file not found`, so it fails if the guard answers instead of the command table.
+- Local check on Windows: forcing `tauri://localhost` reproduced the same `get_app_info` error and failed the strengthened test with `read_file not allowed. Plugin not found`. With the correct origin, all 5 tests pass.
+
+This shows the Windows side only. **Whether the correction works on macOS and Linux is pending CI.**
 
 ### Limits and remaining gates
 
-- Linux and macOS have never run this code, and the workflow itself had not run when this was written.
+- No Linux or macOS job has passed yet. The only finished native result so far is the macOS arm64 failure above.
+- The Rust IPC tests use Tauri's mock context, which has no app manifest. They prove command registration and origin handling, not capability enforcement. Real ACL rejection has been proven only by the Windows smoke.
 - The macOS smoke cannot show that the window renders or that IPC works. That needs a real Mac or a later automation approach.
 - 200% is emulated through DevTools (half the CSS pixels at scale factor 2), not Windows display scaling. High-DPI display scaling is not proven.
 - Windows did not enforce the configured 800×600 minimum against a direct `SetWindowPos` to 640×480. Interactive drag-resize against the minimum has not been tried.
@@ -75,7 +88,7 @@ CI definition, passing builds and runtime proof are separate, so they are listed
 - Installers were built but not installed. Packages and signing are WP11.
 - `npm audit` reports 12 moderate advisories, all in the dev-only lint stack through `minimatch`. `npm audit --omit=dev` reports 0. TypeScript is held at 6.0.3 and ESLint at 9.39.5 for lint plugin compatibility.
 - Four native jobs run on each PR update. macOS minutes are billed at a high multiplier on private repositories, so watch the Actions allowance.
-- `docs/prompts/OPUS-MASTER.md` had an uncommitted coordinator edit in the shared checkout during this work. It is deliberately not part of this PR.
+- The high-reasoning delegation preference in `docs/prompts/OPUS-MASTER.md` is committed and pushed as `ea67c86`.
 
 ### Next: WP01b dependencies
 
