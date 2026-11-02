@@ -127,3 +127,69 @@ Round 3 (GPT-6.1 Sol, High), scoped to S3 and its delta since `bc4c963`, **appro
 ### Shipping (DG01-SHIP-A)
 
 Published as a ready-for-review PR from `t3/reusable-player-database` against `main` at `def9039`. `main` had not moved, so no update was needed. PR #1 is still open and unmerged, and DG01 stays independent of it. The PR description records the live PR, its checks and labels. Commits after `40ba795` are ledger-only.
+
+**Merged.** [PR #6](https://github.com/AMattHT/MaddenTool/pull/6) (head `b6b3e7b`) merged into `main` as `2f1da5728b1d058f5273020ee6515941df509899` on 2026-11-02. Its three CI jobs passed. Issues #2 to #5 are closed as completed.
+
+## DG02 Madden 27 draft-class reader
+
+Status: **implemented and proven locally on the RL1 template; published as draft [PR #9](https://github.com/AMattHT/MaddenTool/pull/9) against `main` to start CI.** Not merged, not ready for review.
+
+**Code approved by Sol at `fabcd3ea`, after two GPT-6.1 Sol High rounds.** This is an AI review, not a GitHub human approval. The ledger is `reviews/dg02-sol-loop.md`.
+
+- Round 1 (`6911c423`) returned CHANGES: two test-validity findings, S1 and S2, and no reader bug.
+- Both were fixed in `84a4a3e9`.
+- Round 2, scoped to `6911c423..fabcd3ea` and its callers, approved with no new findings.
+
+**DG02 is not complete.** Two acceptance gates remain:
+
+- the TEMP1 to TEMP3 (RL4) required-mode real-file and differential run;
+- three-OS CI.
+
+The branch is published as **draft** [PR #9](https://github.com/AMattHT/MaddenTool/pull/9) to start CI. The draft is deliberate: acceptance is incomplete. Labels: `enhancement`, `documentation`, `size:XXL`, `WIP`, `needs-tests`.
+
+| Field | Value |
+|---|---|
+| Provider/model | `claudeAgent` / `claude-opus-5-5`, high reasoning, in T3 Code |
+| Branch | `t3/8830e17a`, based on `main` at `2f1da5728b1d058f5273020ee6515941df509899` (DG01 merged). The task branch started at `def9039` and was fast-forwarded. Independent of PR #1 |
+| Delivered | `crates/mt-draft-format` (reader, field map, unknown-byte map, `mt-draft inspect`), opt-in real-file and legacy differential tests, `.github/workflows/draft-format.yml` |
+| Parity rows | Read side of `DG-FILE-01`, `DG-FILE-07` (capacity, active and export policy kept apart; the 402 limit stays DG03) and `XP-014` for draft classes. None closed: their acceptance needs the DG03 writer |
+
+Evidence (Windows 11 x64, Rust 1.99.0, Node 24.17.0); details in `../crates/mt-draft-format/README.md`:
+
+| Check | Result |
+|---|---|
+| Test-first | Against the phase-1 model (decoding only: no validation, no retained attribute bytes or JSON text), 26 of 34 tests failed, 11 of them with "the reader accepted an invalid file". After the implementation all passed |
+| fmt; clippy `--workspace --all-targets -D warnings`; `cargo test --workspace --locked` | Pass. mt-draft-format 36 (2 unit, 26 reader, 5 CLI, 3 opt-in that skip without fixtures); mt-store 37 unchanged |
+| CLI smoke (`tests/smoke.sh`, Git Bash) | Pass |
+| `CAREERDRAFT-2027Template`, SHA-256 `b62bbe81…7ab3` | `Madden-27-RL1-9081279`, 389 of 455 active, 66 blank inactive slots, no warnings. 31,898 field values. 15,949 unknown bytes, all zero. SHA-256 identical before and after `inspect` |
+| Differential against legacy `M27Parser.js` (`9a4ac69f`, pinned SHA-256) on the template | 389 records, 31,120 field comparisons, 778 declared-constant checks, 389 visual objects, 455 record hashes: **0 discrepancies**. Normalized and counted: 389 empty `assetName` values that legacy reports as `null` |
+| Runner sensitivity | Swapping two rating offsets for one run gave 780 discrepancies. Reverted |
+| Broken configuration | A missing directory, a directory with no fixtures, a modified copy, a missing fixture under `MADDENTOOL_REQUIRE_FIXTURES=1`, a wrong legacy path and a missing `node` each fail |
+
+**Not verified:**
+
+- **TEMP1, TEMP2 and TEMP3** (RL4) have not been read. DG02 was built on the user's laptop, which has no Madden 27 and no copies of them; the originals are on the user's desktop PC. The required-mode run (`MADDENTOOL_REQUIRE_FIXTURES=1`, command in the crate README) is a pending acceptance gate. The template and synthetic tests do not stand in for RL4.
+- **CI**: no result yet. The three-OS workflows first run on draft PR #9; their outcome is recorded once they finish.
+- **macOS and Linux at runtime.**
+- **Game acceptance** of any file.
+
+New finding: the legacy `birthdate` decode does not fit the template's values (decoded years range from 1940 to 2067 for 21-to-24-year-olds). The reader exposes the raw U16 only. DG04c must re-derive the encoding before generating birthdates.
+
+### DG02-FIX-1: Sol round 1 findings
+
+| Finding | Root cause | Issue | Status |
+|---|---|---|---|
+| S1 | Required mode skipped instead of failing when `MADDENTOOL_FIXTURES` or `MADDENTOOL_LEGACY_MDG` was unset | [#7](https://github.com/AMattHT/MaddenTool/issues/7) | Fixed in `84a4a3e9`, in draft PR #9, awaiting merge |
+| S2 | The differential never checked that `inspect --json` reported each active slot exactly once, so 389 copies of slot 0 passed | [#8](https://github.com/AMattHT/MaddenTool/issues/8) | Fixed in `84a4a3e9`, in draft PR #9, awaiting merge |
+
+The fix touches test support, two test files and the crate README only; no reader or CLI code changed.
+
+| Check (Windows 11 x64, Rust 1.99.0, Node 24.17.0) | Result |
+|---|---|
+| Red, against `6911c423` behaviour | 4 of the 6 new regressions failed for the reported reasons. The 2 optional-skip regressions passed, as intended |
+| fmt; clippy `--workspace --all-targets -D warnings`; `cargo test --workspace --locked` | Pass. mt-draft-format: 39 always-run tests (2 unit, 26 reader, 5 CLI, 6 regressions) plus 3 opt-in tests that skip without fixtures. mt-store: 37, unchanged |
+| CLI smoke and the CI skip-report step, locally in Git Bash | Pass |
+| Template, real-file and differential runs (optional mode, legacy `9a4ac69f`) | 389 players, 31,898 field values, 15,949 unknown bytes all zero. Differential: 31,120 field comparisons, 778 declared-constant checks, 389 visuals, 455 record hashes, 0 discrepancies. SHA-256 `b62bbe81…7ab3` unchanged by `inspect` |
+| Repeated-slot adapter | Before the fix, both opt-in suites passed with it. After the fix, both fail (exit 101, 388 slots missing, slot 0 repeated) |
+
+Required mode has not been run to a pass: it needs TEMP1 to TEMP3.

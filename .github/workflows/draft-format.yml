@@ -1,0 +1,75 @@
+# DG02 Madden 27 draft-class reader: Rust gates and a CLI smoke test on SYNTHETIC files.
+# Game files are never in CI, so the real-file and legacy differential tests skip here
+# and this workflow checks that they said so. They run locally with MADDENTOOL_FIXTURES.
+name: Draft format
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: draft-format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-2025
+          - name: Linux x64
+            runner: ubuntu-24.04
+          - name: macOS arm64
+            runner: macos-15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # rust-toolchain.toml pins the version; this installs it with its components.
+      - name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy -p mt-draft-format --all-targets --locked -- -D warnings
+
+      - name: tests (synthetic)
+        run: cargo test -p mt-draft-format --locked
+
+      - name: Real-file and differential tests report their skip
+        run: |
+          set -euo pipefail
+          unset MADDENTOOL_FIXTURES MADDENTOOL_LEGACY_MDG
+          cargo test -q -p mt-draft-format --locked --test real_fixtures --test differential \
+            -- --nocapture 2>&1 | tee optin.log
+          grep -q 'SKIPPED game_classes_parse_completely: MADDENTOOL_FIXTURES is not set' optin.log
+          grep -q 'SKIPPED differential: MADDENTOOL_FIXTURES is not set' optin.log
+          {
+            echo "### mt-draft-format on ${{ matrix.name }}"
+            echo "Real game files and the legacy differential test did **not** run (no fixtures in CI)."
+            echo "Synthetic tests and the CLI smoke cover validation and byte preservation only."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: CLI smoke on a synthetic class
+        run: |
+          set -euo pipefail
+          cargo build -q -p mt-draft-format --bin mt-draft --locked
+          bin=target/debug/mt-draft
+          if [ -f "$bin.exe" ]; then bin="$bin.exe"; fi
+          bash crates/mt-draft-format/tests/smoke.sh "$bin" "$RUNNER_TEMP/mt-draft-smoke"
