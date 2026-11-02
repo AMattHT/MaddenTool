@@ -4,8 +4,10 @@
 //! identity, cross-source IDs and per-import provenance. It does not generate ratings
 //! or read game files; see `docs/superpowers/plans/2026-11-02-draft-first.md`.
 
+pub mod corrections;
 pub mod error;
 pub mod formats;
+pub mod identity;
 pub mod import;
 pub mod names;
 pub mod query;
@@ -16,10 +18,12 @@ use std::path::Path;
 
 use rusqlite::Connection;
 
+pub use corrections::Corrections;
 pub use error::{Result, StoreError};
 pub use formats::Format;
+pub use identity::{Conflict, Merge, Reconciliation};
 pub use import::{ImportOptions, ImportSummary, Issue};
-pub use query::{ImportRecord, Info, PlayerRow};
+pub use query::{ImportRecord, Info, PlayerDetail, PlayerRow, Selection};
 pub use wav::{AsOf, CareerState, WavEvidence};
 
 pub struct Store {
@@ -61,6 +65,25 @@ impl Store {
 
     pub fn players_by_year(&self, year: i64, position: Option<&str>) -> Result<Vec<PlayerRow>> {
         query::players_by_year(&self.conn, year, position)
+    }
+
+    /// Merge provisional players the evidence shows are one person, outside an import.
+    /// Repairs databases written before identity reconciliation existed.
+    pub fn reconcile(&mut self) -> Result<Reconciliation> {
+        let tx = self.conn.transaction()?;
+        let result = identity::reconcile(&tx, None)?;
+        tx.commit()?;
+        Ok(result)
+    }
+
+    /// Identities the data cannot settle. Read-only.
+    pub fn conflicts(&self) -> Result<Vec<Conflict>> {
+        identity::conflicts(&self.conn)
+    }
+
+    /// A person by any uid they were ever issued, with every selection and alias.
+    pub fn player(&self, uid: &str) -> Result<Option<PlayerDetail>> {
+        query::player(&self.conn, uid)
     }
 
     pub fn imports(&self) -> Result<Vec<ImportRecord>> {

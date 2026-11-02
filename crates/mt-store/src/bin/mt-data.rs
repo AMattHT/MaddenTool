@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use mt_store::{AsOf, Format, ImportOptions, PlayerRow, Store, StoreError, WavEvidence};
+use mt_store::{
+    AsOf, Corrections, Format, ImportOptions, PlayerRow, Reconciliation, Selection, Store,
+    StoreError, WavEvidence,
+};
 
 const USAGE: &str = "\
 mt-data: MaddenTool historical player database
@@ -17,6 +20,9 @@ USAGE:
   mt-data query   --db <file> --year <year> [--position <pos>] [--json]
   mt-data imports --db <file> [--json]
   mt-data info    --db <file> [--json]
+  mt-data player  --db <file> --uid <uid> [--json]
+  mt-data conflicts --db <file> [--json]
+  mt-data reconcile --db <file>
 
 FORMATS:
   nflverse-draft-picks   draft_picks.csv from the nflverse-data `draft_picks` release
@@ -25,6 +31,11 @@ FORMATS:
 --as-of is the date the source data was current (for nflverse, the release's
 timestamp.json). It is required: wAV means nothing without it.
 --synthetic marks test fixtures so they can never pass for real data.
+
+Every import ends with identity reconciliation: provisional players the evidence
+shows are one person are merged, and their old uids keep resolving (see `player`).
+`conflicts` lists the identities the data cannot settle; nothing there is merged.
+`reconcile` runs the same pass without an import, for databases written earlier.
 ";
 
 struct Args {
@@ -123,13 +134,45 @@ fn opt<T: ToString>(v: &Option<T>) -> String {
     v.as_ref().map(ToString::to_string).unwrap_or_default()
 }
 
+fn selection_label(s: &Selection) -> String {
+    format!(
+        "{} {} r{} p{}",
+        s.source_format,
+        s.league.as_deref().unwrap_or(&s.draft_status),
+        opt(&s.draft_round),
+        opt(&s.draft_pick)
+    )
+}
+
+fn tally<'a>(items: impl Iterator<Item = &'a str>) -> Vec<(&'a str, usize)> {
+    let mut out: Vec<(&str, usize)> = Vec::new();
+    for item in items {
+        match out.iter_mut().find(|(k, _)| *k == item) {
+            Some((_, n)) => *n += 1,
+            None => out.push((item, 1)),
+        }
+    }
+    out
+}
+
+fn print_reconciliation(r: &Reconciliation) {
+    println!("identity merges: {}", r.merges.len());
+    for (reason, n) in tally(r.merges.iter().map(|m| m.reason.as_str())) {
+        println!("  {reason}: {n}");
+    }
+    println!("unsettled identities (not merged): {}", r.conflicts.len());
+    for (kind, n) in tally(r.conflicts.iter().map(|c| c.kind.as_str())) {
+        println!("  {kind}: {n}");
+    }
+}
+
 fn print_players(rows: &[PlayerRow]) {
     println!(
-        "player_uid\tyear\tstatus\tround\tpick\tteam\tleague\tposition\tname\tcollege\twav\twav_evidence\tas_of\tsource\tsources\tsynthetic"
+        "player_uid\tyear\tstatus\tround\tpick\tteam\tleague\tposition\tname\tcollege\twav\twav_evidence\tas_of\tsource\tsources\tsynthetic\tselections"
     );
     for r in rows {
         println!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             r.player_uid,
             r.draft_year,
             r.draft_status,
@@ -145,7 +188,12 @@ fn print_players(rows: &[PlayerRow]) {
             r.as_of,
             r.source_format,
             r.sources.join(","),
-            r.synthetic
+            r.synthetic,
+            r.selections
+                .iter()
+                .map(selection_label)
+                .collect::<Vec<_>>()
+                .join("; ")
         );
     }
 }
@@ -187,6 +235,7 @@ fn run(args: Args) -> Result<(), Failure> {
                 source_url: args.values.get("source-url").cloned(),
                 label: args.values.get("label").cloned(),
                 synthetic: args.flag("synthetic"),
+                corrections: Corrections::builtin(),
             };
             let mut store = Store::open(&PathBuf::from(args.require("db")?))?;
             let s = store.import(&options)?;
@@ -205,6 +254,7 @@ fn run(args: Args) -> Result<(), Failure> {
                 "linked to an existing player: {} by external id, {} by draft slot and surname",
                 s.linked_by_external_id, s.linked_by_draft_slot
             );
+            println!("rows changed by a verified correction: {}", s.corrected);
             let mut kinds: Vec<(&str, usize)> = Vec::new();
             for issue in &s.issues {
                 match kinds.iter_mut().find(|(k, _)| *k == issue.kind) {
@@ -229,6 +279,7 @@ fn run(args: Args) -> Result<(), Failure> {
                     s.issues.len() - 10
                 );
             }
+            print_reconciliation(&s.reconciliation);
             Ok(())
         }
         "query" => {
@@ -285,8 +336,13 @@ fn run(args: Args) -> Result<(), Failure> {
                 return json(&info);
             }
             println!(
-                "schema version {} | players {} | external ids {} | imports {}",
-                info.schema_version, info.players, info.external_ids, info.imports
+                "schema version {} | players {} | merged aliases {} | corrected records {} | external ids {} | imports {}",
+                info.schema_version,
+                info.players,
+                info.merged_aliases,
+                info.corrected_records,
+                info.external_ids,
+                info.imports
             );
             for f in info.formats {
                 println!(
@@ -294,6 +350,61 @@ fn run(args: Args) -> Result<(), Failure> {
                     f.format, f.records, f.first_year, f.last_year, f.wav_missing, f.wav_zero
                 );
             }
+            Ok(())
+        }
+        "player" => {
+            args.check_known(&["db", "uid", "json"])?;
+            let store = Store::open_existing(&PathBuf::from(args.require("db")?))?;
+            let uid = args.require("uid")?;
+            let Some(p) = store.player(uid)? else {
+                return Err(Failure::Store(StoreError::InvalidInput(format!(
+                    "no player was ever issued uid {uid}"
+                ))));
+            };
+            if args.flag("json") {
+                return json(&p);
+            }
+            println!("requested {} -> player {}", p.requested_uid, p.player_uid);
+            println!("aliases: {}", p.aliases.join(", "));
+            for (ns, v) in &p.external_ids {
+                println!("{ns}: {v}");
+            }
+            for s in &p.selections {
+                let corrected = if s.corrections.is_empty() {
+                    String::new()
+                } else {
+                    format!("\tcorrected: {}", s.corrections.join(","))
+                };
+                println!(
+                    "{} {}\t{}\t{}\t{}\twAV {}\tas-of {}{corrected}",
+                    s.draft_year,
+                    selection_label(s),
+                    s.name,
+                    opt(&s.college),
+                    opt(&s.position),
+                    opt(&s.wav),
+                    s.as_of,
+                );
+            }
+            Ok(())
+        }
+        "conflicts" => {
+            args.check_known(&["db", "json"])?;
+            let store = Store::open_existing(&PathBuf::from(args.require("db")?))?;
+            let conflicts = store.conflicts()?;
+            if args.flag("json") {
+                return json(&conflicts);
+            }
+            for c in &conflicts {
+                println!("{}\t{}\t{}", c.draft_year, c.kind, c.detail);
+            }
+            eprintln!("{} unsettled identities", conflicts.len());
+            Ok(())
+        }
+        "reconcile" => {
+            args.check_known(&["db"])?;
+            let mut store = Store::open_existing(&PathBuf::from(args.require("db")?))?;
+            print_reconciliation(&store.reconcile()?);
             Ok(())
         }
         other => Err(Failure::Usage(format!("unknown command {other:?}"))),

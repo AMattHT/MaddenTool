@@ -18,6 +18,9 @@ mt-data query --db scratch.db --year 2001 --position QB
 mt-data query --db scratch.db --year 2001 --json
 mt-data imports --db scratch.db
 mt-data info --db scratch.db
+mt-data player --db scratch.db --uid <uid>   # any uid ever issued, with every selection
+mt-data conflicts --db scratch.db            # identities the data cannot settle
+mt-data reconcile --db scratch.db            # repair a database written before schema v2
 ```
 
 `mt-data help` lists every option. Keep databases out of the repository (`*.db` is ignored).
@@ -53,9 +56,11 @@ Whether nflverse's CC-BY-4.0 licence covers redistributing PFR-derived values is
 | Table | Holds |
 |---|---|
 | `dataset_import` | One row per import: format, label, source URL, **as-of date**, file name and SHA-256 (never the full path), `synthetic` flag, attribution, row counts, tool version, time |
-| `player` | A person, with a `uid` (`mt-` + 16 hex digits) that never changes once issued |
+| `player` | A person, with a `uid` (`mt-` + 16 hex digits) that never changes once issued. `merged_into` marks a provisional player later found to be another; its uid still resolves |
 | `player_external_id` | PFR, GSIS and CFB IDs, each owned by exactly one player |
-| `source_record` | One row per source row: the mapped values plus the original row as JSON (unknown columns included), the import that created it and the import that last confirmed it |
+| `source_record` | One row per source row (a draft selection or undrafted entry): the mapped values plus the original row as JSON (unknown columns included), the import that created it and the import that last confirmed it |
+| `player_merge` | Every merge: from, into, rule, the records and facts relied on, the records moved |
+| `record_correction` | A verified correction applied to one record: field, source value, corrected value, evidence |
 | `import_issue` | Every rejected or unreconciled row, with its source line number |
 
 Migrations are append-only and tracked in `PRAGMA user_version`. `PRAGMA application_id` marks the file as MaddenTool's. The tool refuses to open a database from a newer version or an unrelated SQLite file. Every import runs in one transaction: it either lands completely or not at all.
@@ -81,13 +86,28 @@ Migrations are append-only and tracked in `PRAGMA user_version`. `PRAGMA applica
 
 Conflicts and mismatches are recorded as issues, never forced. Rows missing from a newer import are kept, and their `as_of` shows the last import that had them. Rows repeated within one file are rejected after their first occurrence.
 
-**Precedence.** When two sources describe the same player and year, the query shows nflverse's values and lists every contributing source.
+**One person, many selections.** A person can be drafted more than once: by the AFL and the NFL in one year (1960 to 1966), or again in a later year. After every import, a reconciliation pass looks across all records and merges provisional players only on evidence. A name alone is never enough.
+
+| Rule | Merges when |
+|---|---|
+| `draft_slot_surname` | Two sources hold the same year, league and overall pick with compatible surnames, one record each. This fixes a re-drafted player imported from the legacy file first ([#2](https://github.com/AMattHT/MaddenTool/issues/2)) |
+| `dual_draft_name_college` | One source holds an AFL and an NFL selection in one 1960-66 year with the same name and college, and careers that do not conflict |
+| `dual_draft_name_variant_college` | As above, with variant given names: nicknames (Bob/Robert), one-letter spellings of five-letter-plus names (Emery/Emory), or a dropped middle name (Billy Joe/Billy) |
+| `dual_draft_career_footprint` | As above, with unrelated given names but the same distinctive career on both rows |
+
+Each side must have exactly one candidate. A merge is refused if the two players hold different IDs in one namespace, or if one person would get two selections in one league and year from one source. Everything else is listed by `mt-data conflicts`, not merged: different colleges, conflicting careers, ambiguous partners, initials ("C.B."), unrelated given names. The older player survives. The absorbed uid stays as an alias, so `mt-data player --uid` resolves any uid ever issued. A database written before schema v2 is migrated on open; `mt-data reconcile` repairs it in place.
+
+**Verified corrections.** `data/corrections.json` fixes individual source rows that are demonstrably wrong. Each entry names one row by format and natural key, the values it expects the source to hold, the replacement, and cited evidence. Only `college` and `position` can be corrected. If the source row no longer matches, the correction is reported stale and not applied. The raw row is never edited, and `record_correction` keeps the original value. The first entry is Bob Brown's 1964 AFL selection: the legacy file gives it his namesake's college and position ([#4](https://github.com/AMattHT/MaddenTool/issues/4)).
+
+**Precedence.** A query returns each person once per draft year. Values come from the representative selection: nflverse before legacy, drafted before undrafted, then NFL before AFL, then earliest round and pick. `selections` lists every selection that year, with its own source, league, slot, wAV and corrections. `sources` lists the contributing formats.
 
 **Positions** are the source's own labels (for example, nflverse files 1,932 of its 12,927 picks as `DB`, not `CB` or `S`). The position filter is an exact, case-insensitive match. Mapping to Madden positions is part of generation.
 
 ## Known limits
 
-- The legacy file lists some 1960 to 1966 players twice, once each for the AFL and NFL drafts: 95 name, college and year pairs. They remain separate players here. Merging them, as the legacy app does, belongs to class generation (DG04, parity row `DG-DATA-02`).
+- On the real legacy file (2026-09-15), reconciliation merges 118 AFL/NFL pairs and leaves 25 unsettled: 13 unconfirmed name aliases, 6 career conflicts and 6 college conflicts. Each needs evidence, either a verified correction or a source with IDs, before it can merge. `mt-data conflicts` lists them.
+- Same-source re-drafts in different years (for example 1967 to 1979 legacy-only players) are not merged. A single-year class is unaffected; multi-year classes are a generation concern (DG04a).
+- Uids depend on import order. Query results do not: on the real data, both orders give identical output for every year apart from uids.
 - Legacy `isHOF` is stored as the file states it. The legacy app found that it is stamped by name and can mark a namesake, so it is not verified.
 - Undrafted players exist only in the legacy file. The nflverse `players` table could add their careers; that is a later import.
 - No unique ID links legacy rows to people outside the 1980 onward draft slots, and the legacy file's Madden asset IDs are known to collide between namesakes. They are kept in the raw JSON only.

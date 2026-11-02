@@ -24,6 +24,7 @@ fn options(format: Format, file: &str, as_of: &str) -> ImportOptions {
         source_url: None,
         label: Some("synthetic test fixture".into()),
         synthetic: true,
+        corrections: mt_store::Corrections::builtin(),
     }
 }
 
@@ -49,9 +50,9 @@ fn names(rows: &[PlayerRow]) -> Vec<&str> {
 fn creates_migrates_and_reopens_a_database() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("players.db");
-    assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 1);
+    assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 2);
     let store = Store::open_existing(&path).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 1);
+    assert_eq!(store.schema_version().unwrap(), 2);
     let app_id: i64 = store
         .connection()
         .query_row("PRAGMA application_id", [], |r| r.get(0))
@@ -83,7 +84,7 @@ fn refuses_newer_schema_and_foreign_databases() {
         Store::open(&newer),
         Err(StoreError::NewerSchema {
             found: 99,
-            supported: 1
+            supported: 2
         })
     ));
 

@@ -100,7 +100,37 @@ CREATE TABLE import_issue (
 CREATE INDEX import_issue_import ON import_issue(import_id);
 "#;
 
-const MIGRATIONS: &[&str] = &[V1];
+/// Identity reconciliation. Two provisional players found to be one person are merged:
+/// records and external IDs move to the surviving player, and the absorbed player stays
+/// as an alias (`merged_into`) so every uid ever issued still resolves.
+const V2: &str = r#"
+ALTER TABLE player ADD COLUMN merged_into INTEGER REFERENCES player(id);
+
+CREATE TABLE player_merge (
+    id             INTEGER PRIMARY KEY,
+    from_player_id INTEGER NOT NULL REFERENCES player(id),
+    into_player_id INTEGER NOT NULL REFERENCES player(id),
+    import_id      INTEGER REFERENCES dataset_import(id),  -- NULL for a standalone reconcile
+    reason         TEXT    NOT NULL,
+    evidence       TEXT    NOT NULL,                       -- JSON: the records and facts relied on
+    moved_records  TEXT    NOT NULL                        -- JSON array of source_record ids moved
+);
+
+-- A verified fix to one source row. The row's raw_json is never changed; the mapped
+-- column holds the corrected value and this table holds the original and the evidence.
+CREATE TABLE record_correction (
+    id               INTEGER PRIMARY KEY,
+    source_record_id INTEGER NOT NULL REFERENCES source_record(id),
+    correction_id    TEXT    NOT NULL,
+    field            TEXT    NOT NULL,
+    source_value     TEXT,
+    corrected_value  TEXT,
+    evidence         TEXT    NOT NULL,
+    UNIQUE (source_record_id, field)
+);
+"#;
+
+const MIGRATIONS: &[&str] = &[V1, V2];
 
 /// The schema version this build writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -111,6 +141,11 @@ pub fn schema_version(conn: &Connection) -> Result<i64> {
 
 /// Bring the database to [`SCHEMA_VERSION`], in one transaction per migration.
 pub fn migrate(conn: &mut Connection) -> Result<i64> {
+    migrate_to(conn, SCHEMA_VERSION)
+}
+
+/// Apply migrations up to `target` only. Public so tests can build an older database.
+pub fn migrate_to(conn: &mut Connection, target: i64) -> Result<i64> {
     let app_id: i64 = conn.query_row("PRAGMA application_id", [], |r| r.get(0))?;
     let version = schema_version(conn)?;
     if app_id != APPLICATION_ID {
@@ -126,7 +161,13 @@ pub fn migrate(conn: &mut Connection) -> Result<i64> {
             supported: SCHEMA_VERSION,
         });
     }
-    for (index, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
+    let target = target.clamp(0, SCHEMA_VERSION) as usize;
+    for (index, sql) in MIGRATIONS
+        .iter()
+        .enumerate()
+        .take(target)
+        .skip(version as usize)
+    {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
         tx.pragma_update(None, "application_id", APPLICATION_ID)?;

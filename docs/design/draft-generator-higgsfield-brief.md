@@ -1,6 +1,12 @@
 # Draft generator: design brief for Higgsfield concepts
 
-For the parent's Higgsfield concept round. Written 2026-11-02 in DG01. This brief fixes the workflow, screens, states and data. It deliberately does **not** fix the visual style; that is what the concepts are for. Nothing here is implemented yet except the data behind it (DG01).
+For the Higgsfield concept round. Written 2026-11-02 in DG01. This brief fixes the workflow, screens, states and data. It deliberately does **not** fix the visual style; that is what the concepts are for. Nothing here is implemented yet except the data behind it (DG01).
+
+Updated later on 2026-11-02:
+
+- By user direction, Claude Opus 5.5 on High now does the design-tool work as well as implementation.
+- The user requires the **actual Madden 27 dev-trait icons**, which overrides the generic "no game art" line for those icons only. See [Development-trait icons](#development-trait-icons).
+- [First concept round: review](#first-concept-round-review) lists what the parent's exploratory concepts got wrong.
 
 ## Product and user
 
@@ -47,11 +53,12 @@ The user works in long sessions with dense tables. Desktop windows from 800×600
 - **Hindsight is not draft-day knowledge.** Career wAV was never known on draft day. Labels must not imply otherwise.
 - **Provenance is one click away:** source, as-of date and attribution for any player value.
 - **Spoilers off means hidden,** including in tooltips, sorts, filters and exports.
+- **One person, one row.** A player drafted by both the AFL and the NFL in 1960-66 is one prospect. Show every selection, for example "NFL r1 p2 · AFL r1 p4" for 1964 Bob Brown, each with its source. A value fixed by a verified correction is marked and can show its evidence. An identity the data cannot settle ("conflict") is shown as such, not silently merged or hidden.
 - Counts are three different numbers (active, 402 export limit, 455 capacity). Never merge them into one.
 
 ## Constraints for the concepts
 
-- Original branding. Working name "MaddenTool". No EA, Madden, NFL or team logos, no team wordmarks, no real player photos. Use neutral placeholders for portraits.
+- Original branding. Working name "MaddenTool". No EA, Madden, NFL or team logos, no team wordmarks, no real player photos. Use neutral placeholders for portraits. **Exception requested by the user:** dev traits use the actual Madden 27 icon files below. Their tier names are exactly Normal, Star, Superstar and X-Factor; never invent tiers.
 - Desktop window chrome. Frames at 1440×900 and 1024×768, plus the class board at 800×600.
 - Data-dense but readable: about 30 or more board rows visible at 1440×900; overall and dev trait scannable at a glance.
 - Light and dark appearance, keyboard focus visible, colour never the only signal (dev traits and evidence badges need text or shape too).
@@ -60,6 +67,49 @@ The user works in long sessions with dense tables. Desktop windows from 800×600
 ## Deliverables requested
 
 One frame per screen above at 1440×900. The class board also at 1024×768 and 800×600. State variants: board with spoilers off and on, data screen first-run and offline-degraded, export success and blocked, player profile with the rating explanation open. Two to three distinct directions are enough to choose from.
+
+## Development-trait icons
+
+The user requires the actual Madden 27 icons used by their Madden-Draft-Generator. **The file names are the game's older internal ladder, one step below the displayed tiers**, so do not infer labels from names. The mapping below is from the legacy source (`web/src/components/ui.tsx`, `DEV_ART_NAME` and `DEV_LABELS`, lines 221-270), not from the file names.
+
+| Displayed tier | File | SHA-256 | Size |
+|---|---|---|---|
+| Normal | `slow.png` | `bbd4fd7a9492b74859cc88aff4c32704af88b2c7d70a2a193fcdadabcb910a87` | 96×96, 11,247 B |
+| Star | `normal.png` | `d66cddd97512c5ec224c56a7f44f5db879c7719479e0f33a60a0c7f8a0bd5d34` | 96×96, 10,681 B |
+| Superstar | `quick.png` | `3f0cab1c56ac6e777f68491547476a92f28cb17e772e1e289499141faecec428` | 96×96, 13,948 B |
+| X-Factor | `superstar.png` | `c484dc2c92981295046962fb225621e18496a232451f9acfa8cef72afd3ad038` | 96×96, 12,326 B |
+| Unscouted (spoilers off) | `hidden.png` | `07abd50c1bb48d2b925d41617ad5d1f0d2b47b1d51134e72c3248631eeb15b2c` | 96×96, 12,690 B |
+
+- **Source:** `AMattHT/Madden-Draft-Generator`, `server/data/dev-icons/`, at `master` `9a4ac69f46846d33f8d084948a85a47e4267f01b`. Added in `f94ce3bc` (2026-08-30). The legacy app served them at `/api/portrait/dev-icon/<name>` (`server/src/routes/portrait.ts`). Its source calls them "EA's artwork, extracted from the game".
+- **Rights:** EA's artwork, used at the user's explicit request. They are not yet in this repository. The UI goal decides, with recorded provenance, whether to commit these five files or load them from a user-supplied folder. Other game art stays out of Git.
+- **Behaviour to keep:** every icon has its text label as `alt` and tooltip ("Star development"). With spoilers off the board shows `hidden.png` with the text "Hidden — turn on Spoilers to reveal", and the real tier must not reach the UI. The legacy app also draws a fallback mark per tier (ring, star, ringed star, X-in-hexagon) if a file is missing. Colour is never the only signal.
+
+## First concept round: review
+
+The parent made two exploratory class-board concepts:
+
+| Variant | Higgsfield job |
+|---|---|
+| Dark | `f3ace4f9-5990-4f64-9044-1c5d886b421a` |
+| Light | `e6522c5c-f82d-4169-af63-a17bad435106` |
+
+The images and prompts are untracked in the parent's source workspace under `artifacts/concepts/`: `draft-board-dark.png`, `draft-board-light.png`, `draft-board-concepts.html` and `higgsfield-prompts.json`. They are layout explorations, not specifications.
+
+Keep from them:
+
+- the dense table with a right-hand profile;
+- the three counts shown separately;
+- the "Illustrative concept data" label;
+- a visible "Missing" wAV;
+- seed, hindsight and offline status in the header.
+
+Correct in the next pass (seen in the dark concept):
+
+1. **Invented dev tiers.** "Impact", "Starter", "Role" and "Development" must become Normal, Star, Superstar and X-Factor, with the real icons above.
+2. **"Why this rating" invents reasons.** It says "high college production, strong combine performance". The panel may show only what produced the rating: lens, hindsight, wAV and its evidence, percentile in its comparison group, and whether the value is estimated (`../research/wav-to-ovr-contract.md`).
+3. **Contradictory career state.** "Career status: In progress" appears on a 1983 player. It must come from the data (`ended`, `possibly active`, `no completed season`).
+4. **Placeholder provenance.** "As of: 2024-06-01" must be the real import's as-of date.
+5. **Missing states:** a person with two selections (AFL + NFL) shown once with both; a corrected value; an unsettled identity. Also missing: the spoilers-off board using `hidden.png`.
 
 ## Decisions already made
 

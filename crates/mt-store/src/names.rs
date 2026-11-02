@@ -72,9 +72,129 @@ pub fn surnames_compatible(a: &NameParts<'_>, b: &NameParts<'_>) -> bool {
         && b_full.ends_with(&a_last)
 }
 
+/// Common English given-name forms. Two names are variants when they share a group.
+/// Deliberately conservative: no group joins names that are routinely different people.
+const NICKNAMES: &[&[&str]] = &[
+    &["robert", "bob", "bobby", "rob", "robbie"],
+    &["william", "bill", "billy", "will", "willie"],
+    &["james", "jim", "jimmy", "jimmie"],
+    &["john", "johnny", "jon"],
+    &["richard", "rich", "rick", "ricky", "dick", "richie"],
+    &["ronald", "ron", "ronnie"],
+    &["thomas", "tom", "tommy"],
+    &["charles", "charlie", "charley", "chuck"],
+    &["peter", "pete"],
+    &["walter", "walt"],
+    &["louis", "lou"],
+    &["arthur", "art"],
+    &["gerald", "gerry", "jerry"],
+    &["mack", "mac"],
+    &["glenn", "glen"],
+    &["allen", "allan", "alan"],
+    &["edward", "ed", "eddie"],
+    &["michael", "mike"],
+    &["joseph", "joe", "joey"],
+    &["daniel", "dan", "danny"],
+    &["david", "dave"],
+    &["donald", "don", "donnie"],
+    &["kenneth", "ken", "kenny"],
+    &["lawrence", "larry"],
+    &["samuel", "sam", "sammy"],
+    &["steven", "stephen", "steve"],
+    &["timothy", "tim"],
+    &["anthony", "tony"],
+    &["gregory", "greg"],
+    &["raymond", "ray"],
+    &["frederick", "fred", "freddie"],
+    &["benjamin", "ben"],
+    &["douglas", "doug"],
+    &["patrick", "pat"],
+    &["philip", "phillip", "phil"],
+    &["eugene", "gene"],
+    &["nicholas", "nick"],
+    &["andrew", "andy"],
+    &["matthew", "matt"],
+    &["jeffrey", "jeff"],
+];
+
+fn one_edit_apart(a: &str, b: &str) -> bool {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let (short, long) = if a.len() <= b.len() {
+        (&a, &b)
+    } else {
+        (&b, &a)
+    };
+    if long.len() - short.len() > 1 {
+        return false;
+    }
+    let prefix = short
+        .iter()
+        .zip(long.iter())
+        .take_while(|(x, y)| x == y)
+        .count();
+    if short.len() == long.len() {
+        prefix < short.len() && short[prefix + 1..] == long[prefix + 1..]
+    } else {
+        short[prefix..] == long[prefix + 1..]
+    }
+}
+
+/// True when two given names are plausibly the same person's: equal; one a leading
+/// part of the other ("Billy Joe" and "Billy"); a known nickname pair ("Bob" and
+/// "Robert"); or a one-letter spelling difference in names of five letters or more
+/// ("Emery" and "Emory"). Never enough on its own: callers also require surname,
+/// college and draft year to agree. Initials ("C.B.") match nothing.
+pub fn given_names_compatible(a: &str, b: &str) -> bool {
+    let (ta, tb) = (key_tokens(a), key_tokens(b));
+    if ta.is_empty() || tb.is_empty() {
+        return false;
+    }
+    // Shared leading names say nothing; compare from the first difference.
+    let same = ta.iter().zip(&tb).take_while(|(x, y)| x == y).count();
+    let (Some(fa), Some(fb)) = (ta.get(same), tb.get(same)) else {
+        return true; // one is a leading part of the other
+    };
+    if NICKNAMES
+        .iter()
+        .any(|g| g.contains(&fa.as_str()) && g.contains(&fb.as_str()))
+    {
+        return true;
+    }
+    fa.chars().count() >= 5 && fb.chars().count() >= 5 && one_edit_apart(fa, fb)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn given_name_variants() {
+        for (a, b) in [
+            ("Bob", "Robert"),
+            ("Bobby", "Bob"),
+            ("Ronald", "Ron"),
+            ("Emery", "Emory"),
+            ("Emmet", "Emmett"),
+            ("Billy Joe", "Billy"),
+            ("Earl Ray", "Earl"),
+            ("Glenn", "Glen"),
+            ("Charley", "Charlie"),
+        ] {
+            assert!(given_names_compatible(a, b), "{a} / {b}");
+        }
+        for (a, b) in [
+            ("Dave", "Dale"),
+            ("Jim", "Jerry"),
+            ("Kent", "George"),
+            ("Billy", "Johnny"),
+            ("C.B.", "Carlton"),
+            ("Jack", "Jake"),
+            ("Tom", "Terry"),
+            ("", "Bob"),
+        ] {
+            assert!(!given_names_compatible(a, b), "{a} / {b}");
+        }
+    }
 
     #[test]
     fn markers_and_trailing_digits_are_removed() {

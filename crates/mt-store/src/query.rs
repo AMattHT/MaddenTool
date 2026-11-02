@@ -8,9 +8,31 @@ use serde::Serialize;
 
 use crate::error::Result;
 use crate::formats::Format;
+use crate::identity;
 use crate::wav::{AsOf, WavEvidence, WavInputs, classify};
 
-/// One player in one draft year, as the highest-precedence source describes them.
+/// One source record: a draft selection (or undrafted entry) as one source states it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Selection {
+    pub source_format: String,
+    pub draft_year: i64,
+    pub league: Option<String>,
+    pub draft_status: String,
+    pub draft_round: Option<i64>,
+    pub draft_pick: Option<i64>,
+    pub draft_team: Option<String>,
+    pub name: String,
+    pub position: Option<String>,
+    pub college: Option<String>,
+    pub wav: Option<i64>,
+    pub as_of: String,
+    /// Verified corrections applied to this record (see `data/corrections.json`).
+    pub corrections: Vec<String>,
+}
+
+/// One person in one draft year. Values come from the representative selection: the
+/// highest-precedence source, then the NFL, then the earliest round and pick. Every
+/// selection of that person in that year is listed in `selections`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlayerRow {
     pub player_uid: String,
@@ -34,41 +56,53 @@ pub struct PlayerRow {
     pub synthetic: bool,
     /// Every format holding a record of this player for this draft year.
     pub sources: Vec<String>,
+    pub selections: Vec<Selection>,
 }
 
 struct Candidate {
     player_id: i64,
     record_id: i64,
+    uid: String,
     career_from: Option<i64>,
-    row: PlayerRow,
+    career_to: Option<i64>,
+    hall_of_fame: Option<bool>,
+    synthetic: bool,
+    selection: Selection,
 }
 
-/// Players of one draft year, optionally limited to one source position (case-insensitive).
-///
-/// Positions are the source's own vocabulary (nflverse files many safeties as `DB`).
-/// Mapping them to Madden positions belongs to class generation, not storage.
-pub fn players_by_year(
-    conn: &Connection,
-    year: i64,
-    position: Option<&str>,
-) -> Result<Vec<PlayerRow>> {
-    let mut stmt = conn.prepare_cached(
+fn status_rank(s: &str) -> u8 {
+    match s {
+        "drafted" => 0,
+        "unordered" => 1,
+        _ => 2,
+    }
+}
+
+fn load(conn: &Connection, filter: &str, value: &dyn rusqlite::ToSql) -> Result<Vec<Candidate>> {
+    let sql = format!(
         "SELECT sr.player_id, sr.id, p.uid, sr.full_name, sr.position, sr.college, sr.draft_year,
                 sr.draft_status, sr.draft_round, sr.draft_pick, sr.draft_team, sr.league,
-                sr.career_from, sr.career_to, sr.hall_of_fame, sr.wav, di.as_of, sr.format, di.synthetic
+                sr.career_from, sr.career_to, sr.hall_of_fame, sr.wav, di.as_of, sr.format, di.synthetic,
+                (SELECT group_concat(DISTINCT rc.correction_id) FROM record_correction rc
+                  WHERE rc.source_record_id = sr.id)
          FROM source_record sr
          JOIN player p ON p.id = sr.player_id
          JOIN dataset_import di ON di.id = sr.last_import_id
-         WHERE sr.draft_year = ?1",
-    )?;
-    let candidates = stmt
-        .query_map(params![year], |r| {
+         WHERE {filter}"
+    );
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt
+        .query_map(params![value], |r| {
+            let corrections: Option<String> = r.get(19)?;
             Ok(Candidate {
                 player_id: r.get(0)?,
                 record_id: r.get(1)?,
+                uid: r.get(2)?,
                 career_from: r.get(12)?,
-                row: PlayerRow {
-                    player_uid: r.get(2)?,
+                career_to: r.get(13)?,
+                hall_of_fame: r.get(14)?,
+                synthetic: r.get(18)?,
+                selection: Selection {
                     name: r.get(3)?,
                     position: r.get(4)?,
                     college: r.get(5)?,
@@ -78,59 +112,101 @@ pub fn players_by_year(
                     draft_pick: r.get(9)?,
                     draft_team: r.get(10)?,
                     league: r.get(11)?,
-                    career_to: r.get(13)?,
-                    hall_of_fame: r.get(14)?,
                     wav: r.get(15)?,
-                    wav_evidence: WavEvidence::Missing,
                     as_of: r.get(16)?,
                     source_format: r.get(17)?,
-                    synthetic: r.get(18)?,
-                    sources: Vec::new(),
+                    corrections: corrections
+                        .map(|c| c.split(',').map(str::to_string).collect())
+                        .unwrap_or_default(),
                 },
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
 
+/// Representative first: source precedence, drafted before undrafted, NFL before AFL
+/// (AFL and NFL picks are separate sequences, so their rounds are not comparable),
+/// earliest round and pick, then record id.
+fn representative_order(c: &Candidate) -> impl Ord + use<> {
+    let s = &c.selection;
+    (
+        Format::precedence(&s.source_format),
+        status_rank(&s.draft_status),
+        s.league.as_deref() != Some("NFL"),
+        s.draft_round.unwrap_or(i64::MAX),
+        s.draft_pick.unwrap_or(i64::MAX),
+        c.record_id,
+    )
+}
+
+/// Players of one draft year, optionally limited to one source position (case-insensitive).
+///
+/// A person appears once, however many selections they had that year (AFL and NFL in
+/// the dual-draft years, or one per source). Positions are the source's own vocabulary
+/// (nflverse files many safeties as `DB`); mapping them to Madden positions belongs to
+/// class generation, not storage.
+pub fn players_by_year(
+    conn: &Connection,
+    year: i64,
+    position: Option<&str>,
+) -> Result<Vec<PlayerRow>> {
     let mut by_player: BTreeMap<i64, Vec<Candidate>> = BTreeMap::new();
-    for c in candidates {
+    for c in load(conn, "sr.draft_year = ?1", &year)? {
         by_player.entry(c.player_id).or_default().push(c);
     }
 
     let mut rows = Vec::new();
     for (_, mut group) in by_player {
-        group.sort_by_key(|c| (Format::precedence(&c.row.source_format), c.record_id));
-        let mut sources: Vec<String> = group.iter().map(|c| c.row.source_format.clone()).collect();
+        group.sort_by_key(representative_order);
+        let mut sources: Vec<String> = group
+            .iter()
+            .map(|c| c.selection.source_format.clone())
+            .collect();
         sources.sort();
         sources.dedup();
-        let chosen = group.swap_remove(0);
-        let mut row = chosen.row;
+        let chosen = &group[0];
+        let s = &chosen.selection;
         if let Some(wanted) = position
-            && !row
+            && !s
                 .position
                 .as_deref()
                 .is_some_and(|p| p.eq_ignore_ascii_case(wanted))
         {
             continue;
         }
-        let as_of = AsOf::parse(&row.as_of)?;
-        row.wav_evidence = classify(
+        let wav_evidence = classify(
             &WavInputs {
-                wav: row.wav,
-                draft_year: row.draft_year as i32,
+                wav: s.wav,
+                draft_year: s.draft_year as i32,
                 career_from: chosen.career_from.map(|v| v as i32),
-                career_to: row.career_to.map(|v| v as i32),
+                career_to: chosen.career_to.map(|v| v as i32),
             },
-            as_of,
+            AsOf::parse(&s.as_of)?,
         );
-        row.sources = sources;
-        rows.push(row);
+        rows.push(PlayerRow {
+            player_uid: chosen.uid.clone(),
+            name: s.name.clone(),
+            position: s.position.clone(),
+            college: s.college.clone(),
+            draft_year: s.draft_year,
+            draft_status: s.draft_status.clone(),
+            draft_round: s.draft_round,
+            draft_pick: s.draft_pick,
+            draft_team: s.draft_team.clone(),
+            league: s.league.clone(),
+            career_to: chosen.career_to,
+            hall_of_fame: chosen.hall_of_fame,
+            wav: s.wav,
+            wav_evidence,
+            as_of: s.as_of.clone(),
+            source_format: s.source_format.clone(),
+            synthetic: chosen.synthetic,
+            sources,
+            selections: group.iter().map(|c| c.selection.clone()).collect(),
+        });
     }
 
-    let status_rank = |s: &str| match s {
-        "drafted" => 0,
-        "unordered" => 1,
-        _ => 2,
-    };
     rows.sort_by(|a, b| {
         (
             status_rank(&a.draft_status),
@@ -146,6 +222,52 @@ pub fn players_by_year(
             .then_with(|| a.player_uid.cmp(&b.player_uid))
     });
     Ok(rows)
+}
+
+/// Everything known about one person, looked up by any uid they were ever issued.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlayerDetail {
+    pub requested_uid: String,
+    pub player_uid: String,
+    /// Uids of provisional players later merged into this one. All still resolve here.
+    pub aliases: Vec<String>,
+    pub external_ids: Vec<(String, String)>,
+    /// Every selection, in draft-year order.
+    pub selections: Vec<Selection>,
+}
+
+pub fn player(conn: &Connection, uid: &str) -> Result<Option<PlayerDetail>> {
+    let Some(canonical) = identity::resolve(conn, uid)? else {
+        return Ok(None);
+    };
+    let id: i64 = conn.query_row("SELECT id FROM player WHERE uid = ?1", [&canonical], |r| {
+        r.get(0)
+    })?;
+    let aliases = conn
+        .prepare("SELECT uid FROM player WHERE merged_into = ?1 ORDER BY uid")?
+        .query_map([id], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+    let external_ids = conn
+        .prepare(
+            "SELECT namespace, value FROM player_external_id WHERE player_id = ?1 ORDER BY 1, 2",
+        )?
+        .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<(String, String)>>>()?;
+    let mut records = load(conn, "sr.player_id = ?1", &id)?;
+    records.sort_by_key(|c| {
+        (
+            c.selection.draft_year,
+            status_rank(&c.selection.draft_status),
+            c.record_id,
+        )
+    });
+    Ok(Some(PlayerDetail {
+        requested_uid: uid.to_string(),
+        player_uid: canonical,
+        aliases,
+        external_ids,
+        selections: records.into_iter().map(|c| c.selection).collect(),
+    }))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -216,7 +338,11 @@ pub struct FormatCount {
 #[derive(Debug, Clone, Serialize)]
 pub struct Info {
     pub schema_version: i64,
+    /// Distinct people (players not merged into another).
     pub players: i64,
+    /// Provisional players merged into another; their uids still resolve.
+    pub merged_aliases: i64,
+    pub corrected_records: i64,
     pub external_ids: i64,
     pub imports: i64,
     pub formats: Vec<FormatCount>,
@@ -243,7 +369,9 @@ pub fn info(conn: &Connection, schema_version: i64) -> Result<Info> {
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(Info {
         schema_version,
-        players: count("SELECT count(*) FROM player")?,
+        players: count("SELECT count(*) FROM player WHERE merged_into IS NULL")?,
+        merged_aliases: count("SELECT count(*) FROM player WHERE merged_into IS NOT NULL")?,
+        corrected_records: count("SELECT count(DISTINCT source_record_id) FROM record_correction")?,
         external_ids: count("SELECT count(*) FROM player_external_id")?,
         imports: count("SELECT count(*) FROM dataset_import")?,
         formats,

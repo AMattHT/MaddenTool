@@ -11,6 +11,12 @@
 //!    a *different* format with a compatible surname: link (`draft_slot_surname`).
 //! 4. Otherwise a new player (`new`).
 //!
+//! After the rows are written, [`crate::identity::reconcile`] looks across all stored
+//! records and merges provisional players that the evidence shows are one person (a
+//! re-drafted player imported from a source without IDs; AFL and NFL selections of one
+//! person). Verified corrections from `data/corrections.json` are applied to mapped
+//! values before any of this; the raw row is kept as the source wrote it.
+//!
 //! Records are never deleted. A record missing from a later import keeps its values
 //! and its `last_import_id` shows when a source last confirmed it.
 
@@ -21,8 +27,10 @@ use rusqlite::{OptionalExtension, Transaction, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+use crate::corrections::{Applied, Corrections, Outcome};
 use crate::error::{Result, StoreError};
 use crate::formats::{Format, MAPPING_VERSION, Mapped, Row};
+use crate::identity::{self, Reconciliation};
 use crate::names::{NameParts, surnames_compatible};
 use crate::wav::AsOf;
 
@@ -33,6 +41,8 @@ pub struct ImportOptions {
     pub source_url: Option<String>,
     pub label: Option<String>,
     pub synthetic: bool,
+    /// Verified row corrections; [`Corrections::builtin`] for normal use.
+    pub corrections: Corrections,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -53,7 +63,11 @@ pub struct ImportSummary {
     pub rejected: u64,
     pub linked_by_external_id: u64,
     pub linked_by_draft_slot: u64,
+    /// Rows a verified correction changed.
+    pub corrected: u64,
     pub issues: Vec<Issue>,
+    /// Players merged by this import, and the identities still unsettled afterwards.
+    pub reconciliation: Reconciliation,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -185,7 +199,7 @@ impl Importer<'_, '_> {
                AND sr.draft_status = 'drafted'
                AND NOT EXISTS (SELECT 1 FROM source_record mine
                                WHERE mine.player_id = sr.player_id AND mine.format = ?1
-                                 AND mine.draft_year = ?2)
+                                 AND mine.draft_year = ?2 AND mine.league = ?3)
              ORDER BY sr.id",
         )?;
         let candidates: Vec<(i64, String, Option<String>)> = stmt
@@ -256,7 +270,7 @@ impl Importer<'_, '_> {
     }
 
     /// Insert a new record, or overwrite an existing one's values (never its identity).
-    fn write_record(&self, target: Target, row: &Mapped, hash: &str, raw: &str) -> Result<()> {
+    fn write_record(&self, target: Target, row: &Mapped, hash: &str, raw: &str) -> Result<i64> {
         let id = match target {
             Target::Existing(id) => id,
             Target::New { player_id, method } => {
@@ -319,11 +333,49 @@ impl Importer<'_, '_> {
             &format!("UPDATE source_record SET {COLUMNS} WHERE id = {id}"),
             values,
         )?;
+        Ok(id)
+    }
+
+    /// Replace a record's stored corrections with the ones applied on this import.
+    fn write_corrections(&self, record_id: i64, applied: &[Applied]) -> Result<()> {
+        self.tx.execute(
+            "DELETE FROM record_correction WHERE source_record_id = ?1",
+            [record_id],
+        )?;
+        for a in applied {
+            self.tx.execute(
+                "INSERT INTO record_correction (source_record_id, correction_id, field, source_value,
+                    corrected_value, evidence) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    record_id,
+                    a.correction_id,
+                    a.field,
+                    a.source_value,
+                    a.corrected_value,
+                    a.evidence
+                ],
+            )?;
+        }
         Ok(())
     }
 
-    fn import_row(&mut self, line: u64, row: Mapped, raw: String) -> Result<()> {
-        let hash = sha256_hex(format!("{MAPPING_VERSION}\0{raw}").as_bytes());
+    fn import_row(
+        &mut self,
+        line: u64,
+        row: Mapped,
+        raw: String,
+        applied: &[Applied],
+    ) -> Result<()> {
+        // Corrections are part of the stored content: adding or changing one updates the
+        // row. Uncorrected rows hash exactly as schema v1 did, so they stay "unchanged".
+        let mut content = format!("{MAPPING_VERSION}\0{raw}");
+        for a in applied {
+            content.push_str(&format!(
+                "\0{}:{}={}",
+                a.correction_id, a.field, a.corrected_value
+            ));
+        }
+        let hash = sha256_hex(content.as_bytes());
         let existing: Option<(i64, i64, String)> = self
             .tx
             .query_row(
@@ -342,7 +394,8 @@ impl Importer<'_, '_> {
                 self.summary.unchanged += 1;
             }
             Some((id, player_id, _)) => {
-                self.write_record(Target::Existing(id), &row, &hash, &raw)?;
+                let id = self.write_record(Target::Existing(id), &row, &hash, &raw)?;
+                self.write_corrections(id, applied)?;
                 self.attach_external_ids(line, player_id, &row)?;
                 self.summary.updated += 1;
             }
@@ -356,7 +409,8 @@ impl Importer<'_, '_> {
                     "draft_slot_surname" => self.summary.linked_by_draft_slot += 1,
                     _ => {}
                 }
-                self.write_record(Target::New { player_id, method }, &row, &hash, &raw)?;
+                let id = self.write_record(Target::New { player_id, method }, &row, &hash, &raw)?;
+                self.write_corrections(id, applied)?;
                 self.attach_external_ids(line, player_id, &row)?;
                 self.summary.inserted += 1;
             }
@@ -458,7 +512,7 @@ pub fn run(tx: &Transaction<'_>, options: &ImportOptions) -> Result<ImportSummar
             columns: &columns,
             values: &values,
         };
-        let mapped = match options.format.map_row(&row) {
+        let mut mapped = match options.format.map_row(&row) {
             Ok(m) => m,
             Err(detail) => {
                 importer.issue(Some(line), "invalid_row", detail)?;
@@ -484,7 +538,25 @@ pub fn run(tx: &Transaction<'_>, options: &ImportOptions) -> Result<ImportSummar
             .zip(values.iter())
             .map(|(h, v)| (h.clone(), serde_json::Value::String(v.to_string())))
             .collect();
-        importer.import_row(line, mapped, serde_json::to_string(&raw)?)?;
+        let applied = match options.corrections.apply(options.format.id(), &mut mapped) {
+            Outcome::None => Vec::new(),
+            Outcome::Applied(applied) => {
+                importer.summary.corrected += 1;
+                applied
+            }
+            Outcome::Stale {
+                correction_id,
+                detail,
+            } => {
+                importer.issue(
+                    Some(line),
+                    "correction_stale",
+                    format!("{correction_id}: {detail}"),
+                )?;
+                Vec::new()
+            }
+        };
+        importer.import_row(line, mapped, serde_json::to_string(&raw)?, &applied)?;
     }
 
     let s = &importer.summary;
@@ -500,5 +572,6 @@ pub fn run(tx: &Transaction<'_>, options: &ImportOptions) -> Result<ImportSummar
             importer.import_id
         ],
     )?;
+    importer.summary.reconciliation = identity::reconcile(tx, Some(importer.import_id))?;
     Ok(importer.summary)
 }

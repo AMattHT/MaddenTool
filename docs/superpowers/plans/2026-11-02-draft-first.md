@@ -22,9 +22,9 @@ DG01, DG02 and WP01a/01b are independent. DG04c needs DG03. DG05 needs the shell
 
 ### DG01 Player data foundation (this package)
 
-Outcome: a tested Rust/SQLite store that imports nflverse `draft_picks` and the legacy `ALL_PLAYER_LOOKUP.csv`, keeps stable identity and provenance, and answers "players of year Y at position P". Also delivered: this plan, the Higgsfield brief and the wAV contract.
+Outcome: a tested Rust/SQLite store that imports nflverse `draft_picks` and the legacy `ALL_PLAYER_LOOKUP.csv`, keeps stable identity and provenance, and answers "players of year Y at position P". **Identity reconciliation is part of DG01** (moved here from DG04a at the user's request). A person drafted more than once, whether by the AFL and the NFL in one year or by the NFL in different years, is one person per class. Every selection and its provenance is kept, and a merge needs evidence beyond the name. Also delivered: this plan, the Higgsfield brief and the wAV contract.
 
-Done when: a fresh checkout builds the `mt-data` CLI, creates and migrates a database, imports both formats, queries by year and position, and gets identical results after reopening and after an independent rebuild. Tests cover validation, identity, re-import, missing versus zero wAV, migrations and provenance. Evidence: `../../DELIVERY.md`.
+Done when: a fresh checkout builds the `mt-data` CLI, creates and migrates a database, imports both formats, queries by year and position, and gets identical results after reopening and after an independent rebuild. Both import orders give one person per class where evidence establishes identity. Tests cover validation, identity, merges and refusals, aliases, re-import, missing versus zero wAV, migrations and provenance. Evidence: `../../DELIVERY.md` and `../../reviews/dg01-sol-loop.md`.
 
 ### DG02 Real M27 draft-class reader (WP02a)
 
@@ -57,7 +57,8 @@ Rows: `XP-011` to `XP-013`, `DG-FILE-02` to `05`.
 
 Outcome: everything the generator needs from data, before ratings.
 
-- AFL/NFL merge for 1960 to 1969: the 95 dual-draft pairs found in DG01, plus a league filter.
+- The AFL/NFL identity merge is done in DG01. What remains: the 25 identities DG01 leaves unsettled on the real legacy file, each resolved with cited evidence or left separate; a league filter; and combined 1960-1969 class composition (how the AFL and NFL boards interleave).
+- Same-source re-drafts across years (legacy-only, before 1980) for multi-year classes.
 - Undrafted careers from the nflverse `players` release.
 - Supplemental picks.
 - Position mapping from source labels to Madden positions, including the `DB` split.
@@ -97,6 +98,8 @@ Rows: `DG-RATE-08`, `09`, and the class-build rows.
 ### DG05 Draft studio UI (WP04a to 04c), after Higgsfield concepts
 
 - **DG05a Review board:** class table with alternate views, overflow panel, counts (active, 402 limit, 455 capacity), validation summary and blind scouting. No hidden value reaches the UI while spoilers are off.
+  - Dev traits use the actual Madden 27 icon files from the user's Madden-Draft-Generator, with text labels; `hidden.png` marks an unscouted trait. Provenance and mapping are in the Higgsfield brief.
+  - A person with several selections that year shows once, with every selection visible.
 - **DG05b Player profile and editing:** all edits, undo and redo, edit JSON and CSV.
 - **DG05c Sources and Class Studio:** random, decade, all-time and by-team classes; pool search over about 32k players with p95 under 200 ms; ordered board composition; custom prospects; saved boards.
 
@@ -111,6 +114,8 @@ DDS portrait packs, PID allocation and a portable registry, manifests, and the M
 Franchise saves and the workspace (WP05 to 09), rosters (WP04e) and the legacy franchise tools stay in scope after the draft milestone. The MyFranchise reference moves to 2.0.4 (`../../reference/SOURCES.md`). Its deep audit (WP00R) is needed before any franchise calculation is ported, and not before.
 
 ## Cross-cutting rules for every draft goal
+
+- **Roles (user direction, 2026-11-02):** Claude Opus 5.5 on High does all implementation, design-tool work (Higgsfield concepts included), testing and shipping. GPT-6.1 Sol on High reviews PRs. The parent drafts prompts and coordinates.
 
 - **Parity:** each goal lists the legacy behaviour it reproduces and every deliberate difference.
 - **Determinism:** seeds are explicit and shown. No wall-clock input to generation. The same inputs give the same bytes.
