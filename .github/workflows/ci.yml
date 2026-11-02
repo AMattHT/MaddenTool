@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-2025
+            bundles: nsis
+          - name: Linux x64
+            runner: ubuntu-24.04
+            bundles: appimage,deb
+          - name: macOS arm64
+            runner: macos-15
+            bundles: app,dmg
+          - name: macOS x64
+            runner: macos-15-intel
+            bundles: app,dmg
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # rust-toolchain.toml pins the version; this installs it with its components.
+      - name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf file \
+            webkit2gtk-driver xvfb
+
+      - run: npm ci
+
+      - name: Format, lint, typecheck, tests, provenance and Rust gates
+        run: npm run check
+
+      # Unsigned and not notarized. Signing belongs to the release packages (WP11).
+      - name: Build unsigned bundles
+        run: npm run tauri -- build --bundles ${{ matrix.bundles }} -- --locked
+        env:
+          NO_STRIP: "true"
+
+      # Logs which it found. The smoke needs the runtime; Edge does not provide it.
+      - name: Verify the WebView2 Runtime (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        shell: pwsh
+        run: ./scripts/ensure-webview2.ps1
+
+      - name: Native smoke (Windows, DOM and IPC)
+        if: runner.os == 'Windows'
+        run: npm run smoke:native
+
+      - name: Native smoke (Linux, DOM under xvfb)
+        if: runner.os == 'Linux'
+        run: |
+          cargo install tauri-driver --version 2.1.0 --locked
+          xvfb-run -a npm run smoke:native
+
+      - name: Native smoke (macOS, process start only)
+        if: runner.os == 'macOS'
+        run: npm run smoke:native

@@ -37,6 +37,8 @@ desktop.ini
 /fixtures-local/
 CAREER-*
 CAREERDRAFT-*
+ROSTER-*
+PROFILE-*
 *.frt
 *.fbmod
 *.asar

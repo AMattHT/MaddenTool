@@ -14,10 +14,11 @@ The selected architecture is a Rust backend with Tauri and a responsive React/Ty
 
 - [Source notes](reference/SOURCES.md) distinguish observed facts from unverified behavior.
 - [Audit tools](reference/audit/) regenerate and verify the ledger.
+- [ts-rust evaluation](research/ts-rust-evaluation.md) records the compiler comparison and the decision to retain the existing required TypeScript check.
 - [MyFranchise inventory](reference/myfranchise-2.0.1-inventory.json): 104 IPC channels, 365 component symbols, 51 route strings extracted from the exact 2.0.1 installer. These counts are discovery aids, not a claim of 365 independent features.
 - [Draft tool inventory](reference/draft-tool-inventory.json): 65 route declarations plus React component and service names.
 - [tstack reference](reference/tstack/SOURCE.md): selected upstream skills pinned to a commit with the license retained. Use `file-pr` for shipping PRs; use `babysit-pr` only when that work is assigned. Full-send is not invoked.
 
 ## Current status
 
-Work package 00 is complete. Read [the discovery report](DISCOVERY-REPORT.md), then [the parity ledger](FEATURE-PARITY.csv). The user approved the reviewed design and instructed implementation to begin. Operational questions are resolved in report section 11. WP01a is the first implementation package; see [the execution plan](superpowers/plans/2026-11-01-foundation.md) and [delivery ledger](DELIVERY.md). No product code, GitHub repository, or PR exists yet. The legacy project and installed applications were inspected without modifying them.
+Work package 00 is complete. Read [the discovery report](DISCOVERY-REPORT.md), then [the parity ledger](FEATURE-PARITY.csv). The user approved the reviewed design and instructed implementation to begin. Operational questions are resolved in report section 11. WP01a is the first implementation package; see [the execution plan](superpowers/plans/2026-11-01-foundation.md) and [delivery ledger](DELIVERY.md). WP01a's foundation is under review: see the delivery ledger for its PR and evidence. The legacy project and installed applications were inspected without modifying them.

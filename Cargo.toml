@@ -1,0 +1,23 @@
+# Later crates (mt-core, mt-draft-format, mt-roster-format, mt-franchise-format,
+# mt-franchise, mt-draftgen, mt-store, mt-interop) join this workspace in the work
+# package that first needs them; see docs/PR-ROADMAP.md. No empty placeholders.
+[workspace]
+members = ["app/src-tauri"]
+resolver = "3"
+
+[workspace.package]
+# The single authoritative application version. The Tauri bundle and get_app_info
+# both read it; package.json files deliberately carry no version.
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "UNLICENSED"
+publish = false
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
