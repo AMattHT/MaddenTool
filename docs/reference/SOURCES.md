@@ -63,4 +63,12 @@ Work package 00 verified this ledger. Corrections are in `docs/DISCOVERY-REPORT.
 - The user supplied three game-exported RL4 classes (`CAREERDRAFT-TEMP1`, `TEMP2`, `TEMP3`). Hashes are in report section 5.2.
 - The only M27 franchise file found is a MyFranchise backup from build RL2.5.
 - Coordinator verified authenticated identity via `gh api user`: `AMattHT`, ID `262685875`, matching the legacy remote owner. `amatthewsHT` in CLI status is stale; that API login returns 404.
-- Probe scripts and derived maps are in `reference/audit/`. Scratch output, including a copy of a real save, is in `%TEMP%\maddentool-audit` and is not part of this repository.
+- Probe scripts and derived maps are in `reference/audit/`.
+
+## Additions — 2026-11-02 (DG01)
+
+- **MyFranchise reference is now 2.0.4:** `%USERPROFILE%\Downloads\MyFranchise-2.0.4-setup.exe`, 243,904,227 bytes, SHA-256 `5c3c7f961186db12a3a9b2a89f7446c214c15086997f92b45d2b28df138e497f`. Hashed only; not run or extracted. The 2.0.1 and 2.0.2 evidence above is historical. The deep audit is not needed until franchise work.
+- **Legacy draft generator:** the local checkout no longer exists. GitHub `AMattHT/Madden-Draft-Generator` has default branch `master` at `9a4ac69f`, which merges `release-1.5.2` (`04b24393`, the commit audited earlier). DG01 read a temporary clone outside this repository.
+- **nflverse `draft_picks`:** a [GitHub release](https://github.com/nflverse/nflverse-data/releases/tag/draft_picks), "draft picks dating back to 1980, courtesy of Pro Football Reference". The repository licence is CC-BY-4.0. Columns are documented in the [data dictionary](https://nflreadr.nflverse.com/articles/dictionary_draft_picks.html): `w_av` is weighted AV, `car_av` career AV, `dr_av` draft AV. The 2026-10-28 file leaves `car_av` blank in every row.
+- **Pro Football Reference / Sports Reference:** the [data use page](https://www.sports-reference.com/data_use.html) and [terms](https://www.sports-reference.com/termsofuse.html) welcome credited reuse of facts from individual pages. They prohibit scraped tools or databases and competing data stores, and note that some data may not be redistributed. Automated fetches of PFR pages return 403. MaddenTool does not contact PFR, and real datasets stay on the user's machine.
+- MMC 1.1.0.7 is still at `%USERPROFILE%\Downloads\MMC_Modding_Tools_v1.1.0.7`. Scratch output, including a copy of a real save, is in `%TEMP%\maddentool-audit` and is not part of this repository.

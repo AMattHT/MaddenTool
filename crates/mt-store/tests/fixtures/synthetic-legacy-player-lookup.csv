@@ -1,0 +1,8 @@
+﻿Last Name,First Name,College/Univ,Round,Pick,Draft Class,Position,Jersey,PhotoID,Player Assets ID,CommID,PLPO,Height,Weight,From,To,AP1,PB,St,wAV,League,Race,Home State,Wiki_Image_URL,PFR_Image_URL,isHOF
+Alpha,Synthetic,Example State,1,1,2001,QB,,,,,,,,2001,2015,2,5,12,118,NFL,,,,,FALSE
+Zulu,Synthetic,Fixture Tech,1,2,2001,CB,,,,,,,,2001,2003,0,0,1,4,NFL,,,,,FALSE
+Golf,Synthetic,Example State,UD,UD,2001,LB,,,,,,,,,,,,,,,,,,,
+Hotel‡,Synthetic,Example State,AFL 1,AFL 1,1960,FB,,,,,,,,1960,1968,1,4,8,30,AFL,,,,,TRUE
+India,Synthetic,Fixture Tech,2,15,1955,E,,,,,,,,1955,1961,0,1,4,3,NFL,,,,,FALSE
+Invalid,Synthetic,,AT,AT,1999,QB,,,,,,,,,,,,,,,,,,,
+Juliet,Synthetic,Example State,3,70,1968,DT,,,,,,,,1968,1970,0,0,0,0,AFL,,,,,FALSE

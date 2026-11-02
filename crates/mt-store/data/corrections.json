@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "corrections": [
+    {
+      "id": "1964-afl-r1p4-bob-brown",
+      "format": "legacy-player-lookup",
+      "natural_key": "1964|AFL|1|4|bobbrown|arkpinebluff",
+      "expect": { "college": "Ark-Pine Bluff", "position": "DT" },
+      "set": { "college": "Nebraska", "position": "T" },
+      "evidence": [
+        "https://en.wikipedia.org/wiki/1964_American_Football_League_draft: round 1, pick 4, Denver Broncos (pick acquired from Boston), Bob Brown, Tackle, Nebraska. He is the only Bob Brown in that draft.",
+        "https://en.wikipedia.org/wiki/1964_NFL_draft: pick 2, Philadelphia Eagles, Bob Brown (HOF), offensive tackle, Nebraska; pick 169, San Francisco 49ers, Bob Brown, tackle, Arkansas A&M (a different man).",
+        "https://en.wikipedia.org/wiki/Bob_Brown_(offensive_lineman) and https://www.profootballhof.com/players/bob-boomer-brown: the Nebraska tackle was drafted in the first round in 1964 by both the Philadelphia Eagles and the AFL's Denver Broncos.",
+        "https://en.wikipedia.org/wiki/Bob_Brown_(defensive_lineman): the Arkansas AM&N lineman's draft is 1964 NFL round 13, pick 169; no AFL selection is listed."
+      ],
+      "note": "The legacy lookup gives the 1964 AFL pick the college and position of the Arkansas AM&N namesake. The career on that row is the Nebraska tackle's, so the row is the Nebraska tackle's AFL selection."
+    }
+  ]
+}

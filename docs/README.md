@@ -20,4 +20,6 @@ The selected architecture is a Rust backend with Tauri and a responsive React/Ty
 
 ## Current status
 
+**Since 2026-11-02 the draft generator comes first.** Follow [the draft-first plan](superpowers/plans/2026-11-02-draft-first.md). DG01, the [player database](../crates/mt-store/README.md), is implemented. The [Higgsfield design brief](design/draft-generator-higgsfield-brief.md) and the [wAV-to-OVR contract](research/wav-to-ovr-contract.md) feed the next goals. The MyFranchise reference is now 2.0.4 ([sources](reference/SOURCES.md)). The paragraph below is the earlier status, kept for history.
+
 Work package 00 is complete. Read [the discovery report](DISCOVERY-REPORT.md), then [the parity ledger](FEATURE-PARITY.csv). The user approved the reviewed design and instructed implementation to begin. Operational questions are resolved in report section 11. WP01a is the first implementation package; see [the execution plan](superpowers/plans/2026-11-01-foundation.md) and [delivery ledger](DELIVERY.md). No product code, GitHub repository, or PR exists yet. The legacy project and installed applications were inspected without modifying them.
