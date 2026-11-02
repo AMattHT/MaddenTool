@@ -1,0 +1,531 @@
+{
+  "reference_root": "%USERPROFILE%\\Documents\\Projects\\Madden26DraftClass\\draft-class-generator",
+  "head": "04b24393cc58880b9986c65c9c2e7725728442c0",
+  "dirty_worktree": true,
+  "package_version": "1.5.2",
+  "routes": [
+    {
+      "file": "server/src/routes/draft.ts",
+      "line": 43,
+      "method": "GET",
+      "path": "/draft/years"
+    },
+    {
+      "file": "server/src/routes/draft.ts",
+      "line": 61,
+      "method": "GET",
+      "path": "/draft/:year/generated"
+    },
+    {
+      "file": "server/src/routes/draft.ts",
+      "line": 93,
+      "method": "POST",
+      "path": "/draft/recompute"
+    },
+    {
+      "file": "server/src/routes/draft.ts",
+      "line": 114,
+      "method": "POST",
+      "path": "/draft/recompute-batch"
+    },
+    {
+      "file": "server/src/routes/draft.ts",
+      "line": 122,
+      "method": "GET",
+      "path": "/draft/franchises"
+    },
+    {
+      "file": "server/src/routes/draft.ts",
+      "line": 126,
+      "method": "POST",
+      "path": "/draft/custom"
+    },
+    {
+      "file": "server/src/routes/draft.ts",
+      "line": 198,
+      "method": "GET",
+      "path": "/draft/:year"
+    },
+    {
+      "file": "server/src/routes/export.ts",
+      "line": 23,
+      "method": "POST",
+      "path": "/export/mdc"
+    },
+    {
+      "file": "server/src/routes/export.ts",
+      "line": 137,
+      "method": "POST",
+      "path": "/export/portrait-pack/all"
+    },
+    {
+      "file": "server/src/routes/export.ts",
+      "line": 152,
+      "method": "POST",
+      "path": "/export/portraits/:year"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 9,
+      "method": "GET",
+      "path": "/franchise/historic/seasons"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 15,
+      "method": "POST",
+      "path": "/franchise/historic/arm-playoffs"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 24,
+      "method": "POST",
+      "path": "/franchise/historic/preview"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 37,
+      "method": "GET",
+      "path": "/franchise/list"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 47,
+      "method": "POST",
+      "path": "/franchise/cap-reset"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 59,
+      "method": "POST",
+      "path": "/franchise/player-edit"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 71,
+      "method": "POST",
+      "path": "/franchise/players"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 82,
+      "method": "POST",
+      "path": "/franchise/roster-apply"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 93,
+      "method": "POST",
+      "path": "/franchise/teams"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 104,
+      "method": "POST",
+      "path": "/franchise/trait-realism"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 115,
+      "method": "POST",
+      "path": "/franchise/trim-free-agents"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 126,
+      "method": "POST",
+      "path": "/franchise/reset-draft-picks"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 137,
+      "method": "POST",
+      "path": "/franchise/schedule"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 148,
+      "method": "POST",
+      "path": "/franchise/relocate-rebrand"
+    },
+    {
+      "file": "server/src/routes/franchise.ts",
+      "line": 160,
+      "method": "POST",
+      "path": "/franchise/advance-roster"
+    },
+    {
+      "file": "server/src/routes/gear.ts",
+      "line": 10,
+      "method": "GET",
+      "path": "/gear/players/info"
+    },
+    {
+      "file": "server/src/routes/gear.ts",
+      "line": 17,
+      "method": "GET",
+      "path": "/gear/players"
+    },
+    {
+      "file": "server/src/routes/gear.ts",
+      "line": 24,
+      "method": "GET",
+      "path": "/gear/players/:id"
+    },
+    {
+      "file": "server/src/routes/gear.ts",
+      "line": 32,
+      "method": "POST",
+      "path": "/gear/from-photo"
+    },
+    {
+      "file": "server/src/routes/health.ts",
+      "line": 36,
+      "method": "GET",
+      "path": "/health"
+    },
+    {
+      "file": "server/src/routes/health.ts",
+      "line": 48,
+      "method": "GET",
+      "path": "/config"
+    },
+    {
+      "file": "server/src/routes/health.ts",
+      "line": 57,
+      "method": "GET",
+      "path": "/template/info"
+    },
+    {
+      "file": "server/src/routes/health.ts",
+      "line": 82,
+      "method": "GET",
+      "path": "/about"
+    },
+    {
+      "file": "server/src/routes/likeness.ts",
+      "line": 13,
+      "method": "GET",
+      "path": "/likeness/overrides"
+    },
+    {
+      "file": "server/src/routes/likeness.ts",
+      "line": 18,
+      "method": "GET",
+      "path": "/likeness/overrides/export"
+    },
+    {
+      "file": "server/src/routes/likeness.ts",
+      "line": 33,
+      "method": "PUT",
+      "path": "/likeness/overrides"
+    },
+    {
+      "file": "server/src/routes/likeness.ts",
+      "line": 50,
+      "method": "DELETE",
+      "path": "/likeness/overrides"
+    },
+    {
+      "file": "server/src/routes/likeness.ts",
+      "line": 64,
+      "method": "POST",
+      "path": "/likeness/tone-from-photo"
+    },
+    {
+      "file": "server/src/routes/lookups.ts",
+      "line": 10,
+      "method": "GET",
+      "path": "/lookups"
+    },
+    {
+      "file": "server/src/routes/lookups.ts",
+      "line": 15,
+      "method": "GET",
+      "path": "/lookups/archetypes-by-position"
+    },
+    {
+      "file": "server/src/routes/lookups.ts",
+      "line": 20,
+      "method": "GET",
+      "path": "/lookups/equipment"
+    },
+    {
+      "file": "server/src/routes/lookups.ts",
+      "line": 27,
+      "method": "GET",
+      "path": "/lookups/generic-heads"
+    },
+    {
+      "file": "server/src/routes/lookups.ts",
+      "line": 32,
+      "method": "GET",
+      "path": "/lookups/face-scans"
+    },
+    {
+      "file": "server/src/routes/lookups.ts",
+      "line": 38,
+      "method": "GET",
+      "path": "/lookups/persona-dna"
+    },
+    {
+      "file": "server/src/routes/lookups.ts",
+      "line": 42,
+      "method": "GET",
+      "path": "/lookups/:name"
+    },
+    {
+      "file": "server/src/routes/media.ts",
+      "line": 36,
+      "method": "GET",
+      "path": "/image"
+    },
+    {
+      "file": "server/src/routes/media.ts",
+      "line": 63,
+      "method": "GET",
+      "path": "/logo"
+    },
+    {
+      "file": "server/src/routes/open.ts",
+      "line": 28,
+      "method": "GET",
+      "path": "/open/saves"
+    },
+    {
+      "file": "server/src/routes/open.ts",
+      "line": 34,
+      "method": "POST",
+      "path": "/open/saves"
+    },
+    {
+      "file": "server/src/routes/open.ts",
+      "line": 45,
+      "method": "POST",
+      "path": "/open/file"
+    },
+    {
+      "file": "server/src/routes/open.ts",
+      "line": 60,
+      "method": "GET",
+      "path": "/open/:id"
+    },
+    {
+      "file": "server/src/routes/players.ts",
+      "line": 8,
+      "method": "GET",
+      "path": "/players/search"
+    },
+    {
+      "file": "server/src/routes/players.ts",
+      "line": 16,
+      "method": "GET",
+      "path": "/players/catalog"
+    },
+    {
+      "file": "server/src/routes/portrait.ts",
+      "line": 15,
+      "method": "GET",
+      "path": "/gear-image/:value"
+    },
+    {
+      "file": "server/src/routes/portrait.ts",
+      "line": 24,
+      "method": "GET",
+      "path": "/portrait/generic-head/:code"
+    },
+    {
+      "file": "server/src/routes/portrait.ts",
+      "line": 40,
+      "method": "GET",
+      "path": "/portrait/retro/:first/:last"
+    },
+    {
+      "file": "server/src/routes/portrait.ts",
+      "line": 71,
+      "method": "GET",
+      "path": "/portrait/dev-icon/:name"
+    },
+    {
+      "file": "server/src/routes/portrait.ts",
+      "line": 85,
+      "method": "GET",
+      "path": "/portrait/dna-icon/:name"
+    },
+    {
+      "file": "server/src/routes/portrait.ts",
+      "line": 111,
+      "method": "GET",
+      "path": "/portrait/pid/:pid"
+    },
+    {
+      "file": "server/src/routes/portrait.ts",
+      "line": 127,
+      "method": "GET",
+      "path": "/portrait/plpo/:plpo"
+    },
+    {
+      "file": "server/src/routes/roster.ts",
+      "line": 13,
+      "method": "POST",
+      "path": "/roster/build"
+    },
+    {
+      "file": "server/src/routes/roster.ts",
+      "line": 28,
+      "method": "POST",
+      "path": "/roster/preview-add"
+    },
+    {
+      "file": "server/src/routes/roster.ts",
+      "line": 37,
+      "method": "GET",
+      "path": "/roster/saves"
+    },
+    {
+      "file": "server/src/routes/roster.ts",
+      "line": 42,
+      "method": "POST",
+      "path": "/roster/open"
+    },
+    {
+      "file": "server/src/routes/roster.ts",
+      "line": 58,
+      "method": "GET",
+      "path": "/roster/:id"
+    }
+  ],
+  "react_components": [
+    "web/src/components/AppearanceEditor.tsx",
+    "web/src/components/BigBoard.tsx",
+    "web/src/components/BoardStates.tsx",
+    "web/src/components/CatalogPanel.tsx",
+    "web/src/components/ClassStudio.tsx",
+    "web/src/components/ClassView.tsx",
+    "web/src/components/DraftBoard.tsx",
+    "web/src/components/DraftOptions.tsx",
+    "web/src/components/DroppedPanel.tsx",
+    "web/src/components/ErrorBoundary.tsx",
+    "web/src/components/ExportMenu.tsx",
+    "web/src/components/franchise/AdvanceRosterTool.tsx",
+    "web/src/components/franchise/CapResetTool.tsx",
+    "web/src/components/franchise/DevTraitsTool.tsx",
+    "web/src/components/franchise/DraftPickResetTool.tsx",
+    "web/src/components/franchise/FaTrimTool.tsx",
+    "web/src/components/franchise/FranchiseView.tsx",
+    "web/src/components/franchise/HistoricSeasonTool.tsx",
+    "web/src/components/franchise/PlayerBulkTools.tsx",
+    "web/src/components/franchise/RelocationTool.tsx",
+    "web/src/components/franchise/ScheduleViewer.tsx",
+    "web/src/components/franchise/shared.tsx",
+    "web/src/components/GamePicker.tsx",
+    "web/src/components/GearEditor.tsx",
+    "web/src/components/HomePage.tsx",
+    "web/src/components/MenuBar.tsx",
+    "web/src/components/MetaStrip.tsx",
+    "web/src/components/OpenClass.tsx",
+    "web/src/components/PlayerCards.tsx",
+    "web/src/components/PlayerEditPanel.tsx",
+    "web/src/components/PlayerSearch.tsx",
+    "web/src/components/PlayerTable.tsx",
+    "web/src/components/PositionBreakdown.tsx",
+    "web/src/components/ProfileModal.tsx",
+    "web/src/components/RadarChart.tsx",
+    "web/src/components/RandomDraft.tsx",
+    "web/src/components/RosterEditor.tsx",
+    "web/src/components/rosters/RosterBuilder.tsx",
+    "web/src/components/rosters/RosterPicker.tsx",
+    "web/src/components/rosters/RostersView.tsx",
+    "web/src/components/rosters/TeamPanel.tsx",
+    "web/src/components/SideRail.tsx",
+    "web/src/components/TeamPicker.tsx",
+    "web/src/components/Toolbar.tsx",
+    "web/src/components/TopBar.tsx",
+    "web/src/components/ui.tsx",
+    "web/src/components/UpdateBanner.tsx",
+    "web/src/components/VirtualList.tsx",
+    "web/src/components/WallBoard.tsx",
+    "web/src/components/WhatsNew.tsx",
+    "web/src/components/YearPicker.tsx"
+  ],
+  "services": [
+    "ArchetypeService.ts",
+    "AttributeModel.ts",
+    "AwardsService.ts",
+    "CalibrationService.ts",
+    "ClassName.ts",
+    "CombineService.ts",
+    "CuratedDbPositions.ts",
+    "CuratedGearService.ts",
+    "CuratedSkinToneService.ts",
+    "CustomPortraitIdService.ts",
+    "DbPositionService.ts",
+    "DerivedSkinToneService.ts",
+    "DevTraitService.ts",
+    "DraftClassBuilder.ts",
+    "DraftEnrichment.ts",
+    "EraBioService.ts",
+    "EraGearService.ts",
+    "EraRulesService.ts",
+    "FaceFeatures.ts",
+    "FranchiseService.ts",
+    "FrontSevenClassifier.ts",
+    "FrontSevenService.ts",
+    "GearImageService.ts",
+    "GearOptionsService.ts",
+    "GenericFillerService.ts",
+    "HistoricalAccoladeService.ts",
+    "HistoricFranchiseService.ts",
+    "HometownService.ts",
+    "LaunchRatingsService.ts",
+    "LeagueHistoryData.ts",
+    "LeagueHistoryService.ts",
+    "LikenessOverrideService.ts",
+    "LikenessService.ts",
+    "LogoService.ts",
+    "LookupService.ts",
+    "M27Fields.ts",
+    "M27RookieRatingsService.ts",
+    "Mdc27Service.ts",
+    "MdcService.ts",
+    "NflverseCareerService.ts",
+    "NflverseStatsService.ts",
+    "OpenedClassService.ts",
+    "OVRWeightsCalculator.ts",
+    "PersonaService.ts",
+    "PhotoLookService.ts",
+    "PlayerLookupService.ts",
+    "PoolCatalogService.ts",
+    "PortraitFetchService.ts",
+    "PortraitModService.ts",
+    "PortraitPackService.ts",
+    "PortraitService.ts",
+    "PortraitSlotService.ts",
+    "PositionLabel.ts",
+    "PositionMapper.ts",
+    "RatingService.ts",
+    "RealPlayerGearService.ts",
+    "RecomputeService.ts",
+    "ReferenceDraftService.ts",
+    "RetroHeadshotService.ts",
+    "RetroItaService.ts",
+    "RosterAddService.ts",
+    "RosterBuildService.ts",
+    "RosterContainer.ts",
+    "RosterFileService.ts",
+    "RosterPositionService.ts",
+    "SchemeService.ts",
+    "ScoutingNotesService.ts",
+    "SeasonPackService.ts",
+    "SkinToneClassify.ts",
+    "SkinToneService.ts",
+    "SupplementalDraftService.ts",
+    "Tdb2Engine.ts",
+    "TeamDraftService.ts",
+    "TeamService.ts",
+    "TwoWayService.ts",
+    "WikipediaTeamService.ts",
+    "WikiSkinToneService.ts"
+  ],
+  "status": "Static symbol inventory; route prefixes and behavior require verification."
+}

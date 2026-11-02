@@ -1,0 +1,61 @@
+# Dependencies and build outputs
+node_modules/
+dist/
+target/
+*.tsbuildinfo
+coverage/
+app/src-tauri/gen/
+
+# Agent and tool scratch
+.superpowers/
+.claude/
+.vite/
+.smoke/
+
+# Local configuration and secrets
+.env
+.env.*
+*.local
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Real game data, reference applications and local fixtures never enter Git.
+# Repository fixtures are synthetic; real ones are found through MADDENTOOL_FIXTURES.
+/fixtures-local/
+CAREER-*
+CAREERDRAFT-*
+*.frt
+*.fbmod
+*.asar
+*.dds
+*.db
+*.sqlite
+*.sqlite3
+
+# Archives and installers
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.dll
