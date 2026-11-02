@@ -7,6 +7,7 @@ Updated later on 2026-11-02:
 - By user direction, Claude Opus 5.5 on High now does the design-tool work as well as implementation.
 - The user requires the **actual Madden 27 dev-trait icons**, which overrides the generic "no game art" line for those icons only. See [Development-trait icons](#development-trait-icons).
 - [First concept round: review](#first-concept-round-review) lists what the parent's exploratory concepts got wrong.
+- DG05-CONCEPT-A, the class-board style selection, is in [`concepts/dg05-concept-a/`](concepts/dg05-concept-a/DECISIONS.md). The user selected **direction A, Scouting Desk** (a table with a docked player inspector), in light and dark themes. The package holds both explored directions, the spoilers-off and 800×600 frames, and `comparison.html`.
 
 ## Product and user
 
