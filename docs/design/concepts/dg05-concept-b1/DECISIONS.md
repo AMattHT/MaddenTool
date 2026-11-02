@@ -3,7 +3,7 @@
 Written 2026-11-02 by Claude Opus 5.5 (High), the design agent. This package extends the user's selected direction, [A · Scouting Desk](../dg05-concept-a/DECISIONS.md), into a light appearance, a 1024×768 layout in light and dark, a 200% zoom layout, and one keyboard-focus state. **These are static design frames.** They are not the app: nothing generates, imports, validates or exports, and nothing is interactive. Open `comparison.html` (self-contained, no server) to see everything together.
 
 - **Base:** `origin/main` at `0025e7feecc8d01aaac93888c6071ceb5722189c` (includes PR #12).
-- **Branch:** `t3/7fc47fb0`.
+- **Branch:** `t3/scouting-desk-responsive-themes`.
 - **Not decided here:** the board structure was already settled by the user (A). Default lens, Career cap, 389 vs 402, seed visibility, window arrangement and the product name stay open. The frames show labelled example settings.
 
 ## Outputs
@@ -127,6 +127,12 @@ Other checks:
   - Missing ("—" plus "Missing", marked est.) and Observed 0 ("Obs 0 · ended") stay distinct samples (rows 7, 24 and 19).
 - **Public-content scan:** an automated scan of every rendered frame document, `comparison.html` and `checks.json` found no machine path, user name, e-mail address, `uid` or career field.
 - **Deterministic rebuild:** two clean builds produced byte-identical PNGs and an identical `checks.json`, and `comparison.html` rebuilt identically. The concept A frames also rebuilt byte-identically from the same input, which confirms the base.
+
+### Round 1 corrections
+
+The coordinating Codex agent (GPT-6 Astra, xhigh) applied the small review corrections after GPT-6.1 Sol High round 1. The focus-detail composite now carries its own sample-input and illustrative-rating disclaimer; the crop and caption pixels are unchanged, with the label added below them. The comparison's 1:1 toggle now uses each PNG's native dimensions and restores its fitted dimensions when checked again. The branch labels above and in the ledger were corrected.
+
+A scratch browser check at DPR 1 failed before the viewer fix: the zoom PNG was 1920×1080 but displayed at 960×540 with Fit unchecked. After the fix, all six images match their native dimensions, a fit/native/fit round trip restores the fitted layout, and both saved preference values initialize correctly. Two builds agree, all five board PNGs and their measurements are unchanged, and the six embedded frame copies match the PNGs. These checks exercise the comparison viewer only. See [the review ledger](../../../reviews/dg05-concept-b1-sol-loop.md) and issues [#13](https://github.com/AMattHT/MaddenTool/issues/13) and [#14](https://github.com/AMattHT/MaddenTool/issues/14); a Sol delta review is still pending.
 
 ## Data shown
 

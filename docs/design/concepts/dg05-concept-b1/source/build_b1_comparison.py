@@ -55,7 +55,7 @@ FIGS = [
 
 
 def size_of(name):
-    return (2600, 600) if name == "A-focus-detail" else tuple(F[name]["png_size"])
+    return (2600, 650) if name == "A-focus-detail" else tuple(F[name]["png_size"])
 
 
 def fig(name, title, cap):
@@ -63,7 +63,7 @@ def fig(name, title, cap):
     dw = 960 if name.startswith("A-light-zoom") else w
     dh = round(h * dw / w)
     return (f'<figure><div class="frame"><img src="{uri(os.path.join(ROOT, "assembled", name + ".png"))}" width="{dw}" height="{dh}" '
-            f'data-w="{w}" data-h="{h}" alt="{E(title)}" loading="lazy"></div><figcaption><span class="tag">Assembled · static layout, headless render</span>'
+            f'data-w="{w}" data-h="{h}" data-fit-w="{dw}" data-fit-h="{dh}" alt="{E(title)}" loading="lazy"></div><figcaption><span class="tag">Assembled · static layout, headless render</span>'
             f'<b>{E(title)}</b> <span class="dim">{w}×{h} px · <code>assembled/{name}.png</code></span><br>{E(cap)}</figcaption></figure>')
 
 
@@ -167,7 +167,11 @@ label.fitto{{font-size:13px;color:var(--muted);display:inline-flex;gap:6px;align
 </main>
 <script>
 (function(){{var c=document.getElementById('fit');if(!c)return;
-function apply(){{document.getElementById('frames').classList.toggle('fit',c.checked)}}
+function apply(){{var frames=document.getElementById('frames');frames.classList.toggle('fit',c.checked);
+frames.querySelectorAll('.frame img').forEach(function(img){{
+img.width=Number(c.checked?img.dataset.fitW:img.dataset.w);
+img.height=Number(c.checked?img.dataset.fitH:img.dataset.h);
+}})}}
 try{{var s=localStorage.getItem('dg05b1-fit');if(s!==null)c.checked=s==='1'}}catch(e){{}}
 apply();c.addEventListener('change',function(){{apply();try{{localStorage.setItem('dg05b1-fit',c.checked?'1':'0')}}catch(e){{}}}});}})();
 </script>

@@ -648,15 +648,18 @@ def focus_detail(paths):
     cells = "".join(f'<figure><figcaption>{E(t)}</figcaption><img src="{u}" width="1280" height="240" alt="{E(t)}"></figure>'
                     for t, u in crops)
     doc = ('<!doctype html><html><head><meta charset="utf-8"><style>*{margin:0;box-sizing:border-box}'
-           'html,body{width:2600px;height:600px;overflow:hidden;background:#FFFFFF;color:#1B2433;'
+           'html,body{width:2600px;height:650px;overflow:hidden;background:#FFFFFF;color:#1B2433;'
            'font:600 20px "Segoe UI",system-ui,sans-serif}'
+           '.sample-note{height:50px;padding:0 12px;display:flex;align-items:center;font-size:24px}'
            'main{display:grid;grid-template-columns:1280px 1280px;gap:16px 24px;padding:12px 12px}'
            'figcaption{height:30px}img{display:block;border:1px solid #B9B3A7}</style></head>'
-           f'<body><main>{cells}</main></body></html>')
+           f'<body><main>{cells}</main>'
+           '<p class="sample-note">Sample inputs: wAV and evidence. OVR and dev tiers are illustrative. '
+           'Identity and draft facts are real.</p></body></html>')
     hp = os.path.join(OUT, "A-focus-detail.html")
     open(hp, "w", encoding="utf-8", newline="\n").write(doc)
     png = os.path.join(OUT, "A-focus-detail.png")
-    chrome(["--force-device-scale-factor=1", "--window-size=2600,600", f"--screenshot={png}", file_url(hp)])
+    chrome(["--force-device-scale-factor=1", "--window-size=2600,650", f"--screenshot={png}", file_url(hp)])
     return png
 
 
