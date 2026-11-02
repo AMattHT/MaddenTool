@@ -122,4 +122,8 @@ Round 2 reviewed `bc4c963` and returned CHANGES.
 | CLI after the fix, same database | `conflicts --json` lists the `merge_refused` entry ("one person would have two selections in legacy-player-lookup 2001 NFL"), matching `reconcile`. The database file SHA-256 is identical before and after `conflicts`. Still two players |
 | Real-data scratch databases (both orders) | `conflicts` still 25 (13 alias, 6 career, 6 college); no refusals exist in the real data |
 
-The next review is round 3, GPT-6.1 Sol on High, scoped to S3 and its delta since `bc4c963`. Issues #2 to #5 stay open until their fixes reach `main`.
+Round 3 (GPT-6.1 Sol, High), scoped to S3 and its delta since `bc4c963`, **approved `40ba795`**. S3 is resolved with no new findings, and S1, S2 and U1 are preserved. This is a Sol review approval, not a GitHub human review. Round 2 was the full review of the earlier fixes. Issues #2 to #5 stay open until their fixes reach `main`.
+
+### Shipping (DG01-SHIP-A)
+
+Published as a ready-for-review PR from `t3/reusable-player-database` against `main` at `def9039`. `main` had not moved, so no update was needed. PR #1 is still open and unmerged, and DG01 stays independent of it. The PR description records the live PR, its checks and labels. Commits after `40ba795` are ledger-only.

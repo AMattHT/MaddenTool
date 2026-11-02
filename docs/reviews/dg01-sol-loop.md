@@ -1,8 +1,13 @@
 # DG01 review ledger (sol-loop)
 
-Package DG01, branch `t3/reusable-player-database`, base `main` at `def90394db3d352d790dc4ebbd8b54dd3eef2db8`. Nothing pushed, no PR. The parent coordinates Sol reviews; the implementer records findings and dispositions here.
+Package DG01, branch `t3/reusable-player-database`, base `main` at `def90394db3d352d790dc4ebbd8b54dd3eef2db8`. The parent coordinates Sol reviews; the implementer records findings and dispositions here. Shipping follows the round 3 approval; the PR is linked from `docs/DELIVERY.md` and the issues.
 
-**Approval status: none.** Round 2 resolved S1, S2 and U1 and raised S3. S3 is fixed on the branch but awaits review. The next review is round 3: GPT-6.1 Sol on **High**, scoped to S3 and its delta since `bc4c963`. The parent dispatches it.
+**Approval status: approved by Sol at `40ba795bf832b552de2474a4a30ab1754f4088eb`.** This was a GPT-6.1 Sol review, not a GitHub human approval. The approval rests on two rounds:
+
+- Round 2 (High) reviewed the whole behaviour change through `bc4c963`. It resolved S1, S2 and U1 and raised S3.
+- Round 3 (High) was scoped to S3 and the delta since `bc4c963`, and approved it. Round 3 was not a repeat full-feature audit.
+
+Later ledger-only commits do not change behaviour.
 
 ## Rounds
 
@@ -10,7 +15,7 @@ Package DG01, branch `t3/reusable-player-database`, base `main` at `def90394db3d
 |---|---|---|---|---|
 | 1 | GPT-6.1 Sol, **xhigh** (run before the user required High) | `c86e66481695316a68b17142e4cbac7fab7c4480` | CHANGES | not exposed to the implementer |
 | 2 | GPT-6.1 Sol, **High** | `bc4c96321ca0f7482518162a73800f4cb9369378` | CHANGES: S1, S2 and U1 resolved; S3 raised | not exposed to the implementer |
-| 3 | GPT-6.1 Sol, High, scoped to S3 and its delta | pending | pending | |
+| 3 | GPT-6.1 Sol, **High**, scoped to S3 and its delta since `bc4c963` | `40ba795bf832b552de2474a4a30ab1754f4088eb` | **APPROVE.** S3 resolved, no new findings, no open blocker or should in scope; S1, S2 and U1 resolutions preserved | not exposed to the implementer |
 
 ## Findings
 
@@ -40,6 +45,14 @@ Changed code since `472a4c3`, all under `crates/mt-store/`:
 | `src/query.rs` | One row per person and year, with `selections`; `player` lookup by any uid; alias-aware counts |
 | `src/lib.rs`, `src/bin/mt-data.rs` | `player`, `conflicts` and `reconcile` |
 | `tests/identity.rs` (new) and two synthetic fixtures | Regressions |
+
+Round 3 checks, as the reviewer reported them (relayed by the parent from the reviewer thread):
+
+- `cargo test -p mt-store --locked --test identity`: 11 passed, including both refusal cases.
+- `cargo build -p mt-store --locked --bin mt-data`: passed.
+- An independent scratch CLI reproduction: import, `conflicts --json` and `reconcile` each report the one refused merge; both Synthetic Alpha players remain; the listing is unchanged after reconciliation.
+- The database SHA-256 was identical before and after `conflicts`.
+- The checkout stayed clean.
 
 S3 delta since `bc4c963`: `src/identity.rs` (`conflicts()` reports refusals; `refused_conflict` helper shared with `reconcile()`) and `tests/identity.rs` (one new regression, one extended test). Real data is unchanged: `conflicts` still lists 25 in both import orders, with no refusals present.
 
