@@ -73,7 +73,7 @@ Nothing is normalized or filled in. A key the file lacks, such as `bodyType` or 
 
 The oracle is `server/src/vendor/draft-class/M27Parser.js` from [Madden-Draft-Generator](https://github.com/AMattHT/Madden-Draft-Generator) `master` at `9a4ac69f46846d33f8d084948a85a47e4267f01b`, pinned by SHA-256 `ce24b0063c24e1ca7ce8be8a94717dc96716a49073fa4f0ed6f0e4430c1f067b`. It runs only in the opt-in differential test, through `tests/oracle/legacy-m27-oracle.cjs`. JavaScript is never a runtime dependency.
 
-The differential test (`tests/differential.rs`) compares, per fixture:
+The differential test (`tests/differential.rs`) first requires the `inspect --json` report to list every active slot exactly once, in order: `0..active_count`, nothing missing, repeated, reordered or extra. A matching player count is not enough (issue [#8](https://github.com/AMattHT/MaddenTool/issues/8)). The inspect real-file test applies the same check and compares every reported record hash with the file. Then the differential compares, per fixture:
 
 1. the legacy field map's declared offsets and widths with all 82 Rust fields;
 2. the slots each side treats as players;
@@ -102,8 +102,8 @@ The legacy writer's defects (rewriting visuals, inventing `skinTone` and `bodyTy
 | `tests/read.rs` (26) | Always, offline, three OSes | Every refusal, count boundaries 0, 1, 389, 402, 454 and 455 (456 and above refused), inactive slots, non-zero unknown bytes surviving, every source byte kept, verbatim visual JSON, absent keys staying absent |
 | `tests/cli.rs` (5) | Always | Human and JSON output, `--slot`, exit codes 0/1/2, input unchanged (SHA-256, length, mtime) |
 | `tests/smoke.sh` | CI | The built binary on a shell-built synthetic class, plus a truncated copy |
-| `tests/real_fixtures.rs` (2) | Opt-in | Game files: hash, build, count, every player and field, observed invariants, inspect leaves the file unchanged |
-| `tests/differential.rs` (1) | Opt-in | Legacy parity, as above |
+| `tests/real_fixtures.rs` | 2 opt-in, 2 always | Opt-in: game files: hash, build, count, every player and field, observed invariants, inspect leaves the file unchanged and reports every slot once. Always: required and optional mode, run in child processes (#7) |
+| `tests/differential.rs` | 1 opt-in, 4 always | Opt-in: legacy parity, as above. Always: required mode for both variables, the optional skip (#7), and the slot check rejecting omitted, repeated, reordered or extra players (#8) |
 
 Synthetic files are labelled `SYNTHETIC` and built in memory at full size; no binary fixture is committed. **They test the reader, not the game: nothing here shows Madden accepts a file.**
 
@@ -118,16 +118,16 @@ MADDENTOOL_REQUIRE_FIXTURES=1 \
   cargo test -p mt-draft-format --test real_fixtures --test differential -- --nocapture
 ```
 
-| Situation | Result |
-|---|---|
-| `MADDENTOOL_FIXTURES` unset | Visible `SKIPPED` line; the test passes |
-| Set, but not a directory, or holding none of the four fixtures | Fails |
-| A fixture with a different SHA-256 | Fails |
-| A fixture missing | `SKIPPED` line, or a failure under `MADDENTOOL_REQUIRE_FIXTURES=1` |
-| `MADDENTOOL_LEGACY_MDG` unset | The differential test skips visibly |
-| Set to a wrong path, a parser that is not the pinned one, or no `node` | Fails |
+| Situation | Optional (default) | `MADDENTOOL_REQUIRE_FIXTURES=1` |
+|---|---|---|
+| `MADDENTOOL_FIXTURES` unset | Visible `SKIPPED` line; the test passes | Fails, naming the variable |
+| Set, but not a directory, or holding none of the four fixtures | Fails | Fails |
+| A fixture with a different SHA-256 | Fails | Fails |
+| A fixture missing | `SKIPPED` line | Fails |
+| `MADDENTOOL_LEGACY_MDG` unset | The differential test skips visibly. Fixtures are still checked | Fails, naming the variable. Checked before the fixture files |
+| Set to a wrong path, a parser that is not the pinned one, or no `node` | Fails | Fails |
 
-`MADDENTOOL_NODE` overrides `node`. `cargo test` hides `SKIPPED` lines unless you pass `--nocapture`.
+Use required mode for any run that claims real-file or legacy proof; a pass then means all four fixtures and the oracle ran. `MADDENTOOL_NODE` overrides `node`. `cargo test` hides `SKIPPED` lines unless you pass `--nocapture`.
 
 | Fixture | SHA-256 | Build | Active | Source |
 |---|---|---|---|---|
@@ -160,11 +160,11 @@ The template carries no `skinTone` in any record and no `bodyType` in 174, the o
   - 389 visual objects and 455 record hashes.
   - Normalized: `assetName` null 389 times; no DNA zero slots.
 - **Sensitivity:** swapping `speed` and `spinMove` offsets for one run produced 780 discrepancies (2 map, 778 values). Reverted.
-- **TEMP1 to TEMP3 were not run:** the files were not on this machine during DG02. Their rows above come from the discovery report. **Running the command above with all four files is still required.**
+- **TEMP1 to TEMP3 were not run.** DG02 was built on the user's laptop, which has no Madden 27 and no copies of them; the originals are on the user's desktop PC. Their rows above come from the discovery report. **The required-mode command above, with all four files, is a pending acceptance gate.** The RL1 template and synthetic tests do not stand in for RL4.
 
 ## Open evidence
 
-- **TEMP1 to TEMP3 (RL4)** need the real-file and differential runs.
+- **TEMP1 to TEMP3 (RL4)** need the required-mode real-file and differential run, on the desktop PC or with copies from it.
 - **`birthdate` encoding.** The legacy decode (`day<<11 | (month-1)<<7 | year-1940`, `M27Fields.ts`) does not fit the template: decoded years spread evenly over 1940 to 2067 for players aged 21 to 24. The reader reports the raw U16 only. The generator's encoding (DG04c) must be re-derived before it writes birthdates.
 - Meaning of the `0x3e` constant, `const6b`, `const7d`, `hidden87`, `hidden9c` and the 41 unknown bytes.
 - The encoding of non-ASCII names.

@@ -4,8 +4,10 @@
 //! - Set to something that is not a directory, or a directory holding none of the
 //!   known fixtures: the test fails, because the configuration is broken.
 //! - A fixture whose SHA-256 differs from the recorded hash: the test fails.
-//! - A missing fixture is skipped with a visible line, unless
-//!   `MADDENTOOL_REQUIRE_FIXTURES=1`, which makes every missing fixture a failure.
+//! - A missing fixture is skipped with a visible line.
+//! - `MADDENTOOL_REQUIRE_FIXTURES=1` turns every skip into a failure: an unset
+//!   `MADDENTOOL_FIXTURES` (and, for the differential test, an unset
+//!   `MADDENTOOL_LEGACY_MDG`) or any missing fixture.
 
 use std::path::{Path, PathBuf};
 
@@ -58,10 +60,21 @@ pub fn sha256_file(path: &Path) -> String {
     sha256_hex(&std::fs::read(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())))
 }
 
+/// `MADDENTOOL_REQUIRE_FIXTURES=1`: every opt-in input must be configured and present.
+pub fn required() -> bool {
+    std::env::var("MADDENTOOL_REQUIRE_FIXTURES").is_ok_and(|v| v == "1")
+}
+
 /// The configured fixture directory, or `None` (with a SKIPPED line) when unset.
+/// In required mode an unset variable is a failure, not a skip.
 pub fn fixture_dir(test: &str) -> Option<PathBuf> {
     match std::env::var_os("MADDENTOOL_FIXTURES") {
         None => {
+            assert!(
+                !required(),
+                "{test}: MADDENTOOL_FIXTURES is not set, but MADDENTOOL_REQUIRE_FIXTURES=1 \
+                 requires the real-file tests to run"
+            );
             eprintln!(
                 "SKIPPED {test}: MADDENTOOL_FIXTURES is not set; real-file tests did not run"
             );
@@ -81,7 +94,7 @@ pub fn fixture_dir(test: &str) -> Option<PathBuf> {
 
 /// The present, hash-verified fixtures in `dir`. Fails on a broken configuration.
 pub fn present_fixtures(test: &str, dir: &Path) -> Vec<(&'static Fixture, PathBuf)> {
-    let require = std::env::var("MADDENTOOL_REQUIRE_FIXTURES").is_ok_and(|v| v == "1");
+    let require = required();
     let mut found = Vec::new();
     for f in &FIXTURES {
         let path = dir.join(f.name);

@@ -2,7 +2,9 @@
 //!
 //! Needs `MADDENTOOL_FIXTURES` (game classes) and `MADDENTOOL_LEGACY_MDG` (a checkout of
 //! Madden-Draft-Generator; its `M27Parser.js` must match the pinned SHA-256), plus `node`
-//! on PATH or `MADDENTOOL_NODE`. Either variable unset: visible skip. Set but broken: failure.
+//! on PATH or `MADDENTOOL_NODE`. Either variable unset: visible skip, or a failure under
+//! `MADDENTOOL_REQUIRE_FIXTURES=1`. Set but broken: failure. Before comparing anything,
+//! the `inspect --json` report must list every active slot exactly once, in order.
 //!
 //! For every fixture it compares:
 //! - the legacy field map's declared offsets and widths with [`FIELDS`];
@@ -21,20 +23,31 @@
 
 mod support;
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use mt_draft_format::report::sha256_hex;
 use mt_draft_format::{FIELDS, read_file};
 use serde_json::Value;
-use support::fixtures::{fixture_dir, present_fixtures};
+use support::child::run_test_in_child;
+use support::fixtures::{fixture_dir, present_fixtures, required};
+use support::report::checked_players;
+use support::synthetic::Synthetic;
 
 const PINNED_PARSER_SHA256: &str =
     "ce24b0063c24e1ca7ce8be8a94717dc96716a49073fa4f0ed6f0e4430c1f067b";
 const PARSER_PATH: &str = "server/src/vendor/draft-class/M27Parser.js";
 
+/// The pinned legacy parser, or `None` (with a SKIPPED line) when unset. In required mode
+/// an unset variable is a failure, not a skip.
 fn legacy_parser() -> Option<PathBuf> {
     let Some(root) = std::env::var_os("MADDENTOOL_LEGACY_MDG") else {
+        assert!(
+            !required(),
+            "differential: MADDENTOOL_LEGACY_MDG is not set, but MADDENTOOL_REQUIRE_FIXTURES=1 \
+             requires the legacy differential test to run"
+        );
         eprintln!(
             "SKIPPED differential: MADDENTOOL_LEGACY_MDG is not set; the legacy comparison did not run"
         );
@@ -102,8 +115,11 @@ fn rust_reader_agrees_with_the_legacy_parser() {
     let Some(dir) = fixture_dir("differential") else {
         return;
     };
+    // Configuration first, so a missing oracle in required mode is reported as such;
+    // then the fixtures, so a broken fixture fails even when the oracle is not set.
+    let parser = legacy_parser();
     let fixtures = present_fixtures("differential", &dir);
-    let Some(parser) = legacy_parser() else {
+    let Some(parser) = parser else {
         return;
     };
     let node = std::env::var("MADDENTOOL_NODE").unwrap_or_else(|_| "node".to_string());
@@ -124,6 +140,9 @@ fn rust_reader_agrees_with_the_legacy_parser() {
             "mt-draft inspect --json",
         );
         let class = read_file(&path).unwrap();
+        // Before any comparison or total: the report must hold every active slot once.
+        let players = checked_players(&ours, class.active_count())
+            .unwrap_or_else(|e| panic!("{}: {e}", fx.name));
         let mut issues: Vec<String> = Vec::new();
         let mut bad = |msg: String| issues.push(format!("{}: {msg}", fx.name));
         let mut fields = 0;
@@ -182,7 +201,6 @@ fn rust_reader_agrees_with_the_legacy_parser() {
         }
 
         // 4. Every mapped field and visual object of every active record.
-        let players = ours["players"].as_array().unwrap();
         for p in players {
             let slot = p["slot"].as_u64().unwrap() as usize;
             let r = &records[slot];
@@ -304,5 +322,131 @@ fn rust_reader_agrees_with_the_legacy_parser() {
         t.discrepancies.is_empty(),
         "{} discrepancies",
         t.discrepancies.len()
+    );
+}
+
+// --- Always-run regressions for the opt-in test's own validity (issues #7, #8) --------
+
+const DIFFERENTIAL: &str = "rust_reader_agrees_with_the_legacy_parser";
+
+/// #7: required mode must not skip when `MADDENTOOL_FIXTURES` is unset.
+#[test]
+fn required_mode_fails_when_fixtures_are_not_configured() {
+    let run = run_test_in_child(
+        DIFFERENTIAL,
+        &[("MADDENTOOL_REQUIRE_FIXTURES", OsStr::new("1"))],
+    );
+    assert!(
+        !run.passed,
+        "required mode passed without fixtures: {}",
+        run.output
+    );
+    assert!(
+        run.output.contains("MADDENTOOL_FIXTURES is not set")
+            && run.output.contains("MADDENTOOL_REQUIRE_FIXTURES=1"),
+        "{}",
+        run.output
+    );
+}
+
+/// #7: required mode must not skip the oracle. The fixture directory is configured but
+/// empty, so the run must stop at the missing legacy setting, not at the missing files.
+#[test]
+fn required_mode_fails_when_the_legacy_parser_is_not_configured() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run = run_test_in_child(
+        DIFFERENTIAL,
+        &[
+            ("MADDENTOOL_FIXTURES", dir.path().as_os_str()),
+            ("MADDENTOOL_REQUIRE_FIXTURES", OsStr::new("1")),
+        ],
+    );
+    assert!(
+        !run.passed,
+        "required mode passed without the oracle: {}",
+        run.output
+    );
+    assert!(
+        run.output.contains("MADDENTOOL_LEGACY_MDG is not set")
+            && run.output.contains("MADDENTOOL_REQUIRE_FIXTURES=1"),
+        "{}",
+        run.output
+    );
+}
+
+/// Optional mode keeps its visible skip, so offline and CI runs stay green.
+#[test]
+fn optional_mode_skips_visibly_when_not_configured() {
+    let run = run_test_in_child(DIFFERENTIAL, &[]);
+    assert!(run.passed, "{}", run.output);
+    assert!(
+        run.output
+            .contains("SKIPPED differential: MADDENTOOL_FIXTURES is not set"),
+        "{}",
+        run.output
+    );
+}
+
+/// #8: the slot check the differential runs before comparing anything. Genuine CLI
+/// output passes; reports that omit, repeat, reorder or add players fail, even when
+/// the player count is unchanged.
+#[test]
+fn slot_check_rejects_reports_that_omit_or_repeat_players() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("SYNTHETIC-class");
+    std::fs::write(&path, Synthetic::new(5).bytes).expect("write synthetic class");
+    let genuine = run_json(
+        Command::new(env!("CARGO_BIN_EXE_mt-draft")).args([
+            "inspect",
+            path.to_str().unwrap(),
+            "--json",
+        ]),
+        "mt-draft inspect --json",
+    );
+    assert!(checked_players(&genuine, 5).is_ok());
+    let players = genuine["players"].as_array().unwrap().clone();
+
+    let with = |list: Vec<Value>| {
+        let mut doc = genuine.clone();
+        doc["players"] = Value::Array(list);
+        doc
+    };
+    let mut renumbered = players.clone();
+    renumbered[4]["slot"] = serde_json::json!(5);
+    let cases = [
+        ("every player is slot 0", with(vec![players[0].clone(); 5])),
+        (
+            "slot 3 missing",
+            with([&players[..3], &players[4..]].concat()),
+        ),
+        ("slot 1 repeated in place of slot 3", {
+            let mut l = players.clone();
+            l[3] = players[1].clone();
+            with(l)
+        }),
+        ("slots 1 and 2 swapped", {
+            let mut l = players.clone();
+            l.swap(1, 2);
+            with(l)
+        }),
+        (
+            "an extra slot 5",
+            with([players.clone(), vec![players[4].clone()]].concat()),
+        ),
+        ("slot 4 reported as slot 5", with(renumbered)),
+        ("a slot that is not a number", {
+            let mut l = players.clone();
+            l[2]["slot"] = serde_json::json!("2");
+            with(l)
+        }),
+    ];
+    let accepted: Vec<&str> = cases
+        .iter()
+        .filter(|(_, doc)| checked_players(doc, 5).is_ok())
+        .map(|(name, _)| *name)
+        .collect();
+    assert!(
+        accepted.is_empty(),
+        "the slot check accepted corrupted reports: {accepted:?}"
     );
 }

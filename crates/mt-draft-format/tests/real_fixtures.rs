@@ -5,11 +5,14 @@
 mod support;
 
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::process::Command;
 
 use mt_draft_format::layout::{CAPACITY, VISUAL_SIZE};
 use mt_draft_format::{FIELDS, FieldValue, UNKNOWN_OFFSETS, read_file};
+use support::child::run_test_in_child;
 use support::fixtures::{fixture_dir, present_fixtures, sha256_file, sha256_hex};
+use support::report::checked_players;
 
 #[test]
 fn game_classes_parse_completely() {
@@ -154,10 +157,58 @@ fn inspect_leaves_game_files_unchanged() {
         assert_eq!(after, before, "{}: inspect changed the file", fx.name);
         let doc: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(doc["source"]["sha256"], fx.sha256);
-        assert_eq!(doc["players"].as_array().unwrap().len(), fx.active);
-        let first = &doc["players"][0];
+        // Every active slot exactly once, in order, each matching its bytes in the file.
+        let players =
+            checked_players(&doc, fx.active).unwrap_or_else(|e| panic!("{}: {e}", fx.name));
         let bytes = std::fs::read(&path).unwrap();
-        assert_eq!(first["recordSha256"], sha256_hex(&bytes[0x46..0x46 + 5876]));
+        for (slot, p) in players.iter().enumerate() {
+            let start = 0x46 + slot * 5876;
+            assert_eq!(
+                p["recordSha256"],
+                sha256_hex(&bytes[start..start + 5876]),
+                "{} slot {slot}",
+                fx.name
+            );
+        }
         println!("REAL {}: sha256 before and after inspect {after}", fx.name);
+    }
+}
+
+// --- Always-run regressions for required mode (issue #7) ------------------------------
+
+const OPT_IN: [&str; 2] = [
+    "game_classes_parse_completely",
+    "inspect_leaves_game_files_unchanged",
+];
+
+#[test]
+fn required_mode_fails_when_fixtures_are_not_configured() {
+    for test in OPT_IN {
+        let run = run_test_in_child(test, &[("MADDENTOOL_REQUIRE_FIXTURES", OsStr::new("1"))]);
+        assert!(
+            !run.passed,
+            "{test} passed in required mode without fixtures: {}",
+            run.output
+        );
+        assert!(
+            run.output.contains("MADDENTOOL_FIXTURES is not set")
+                && run.output.contains("MADDENTOOL_REQUIRE_FIXTURES=1"),
+            "{test}: {}",
+            run.output
+        );
+    }
+}
+
+#[test]
+fn optional_mode_skips_visibly_when_not_configured() {
+    for test in OPT_IN {
+        let run = run_test_in_child(test, &[]);
+        assert!(run.passed, "{test}: {}", run.output);
+        assert!(
+            run.output
+                .contains(&format!("SKIPPED {test}: MADDENTOOL_FIXTURES is not set")),
+            "{test}: {}",
+            run.output
+        );
     }
 }
