@@ -132,7 +132,7 @@ Published as a ready-for-review PR from `t3/reusable-player-database` against `m
 
 ## DG02 Madden 27 draft-class reader
 
-Status: **implemented and proven locally on the RL1 template; committed on the task branch, not pushed.** No PR yet.
+Status: **implemented and proven locally on the RL1 template; published as draft [PR #9](https://github.com/AMattHT/MaddenTool/pull/9) against `main` to start CI.** Not merged, not ready for review.
 
 **Code approved by Sol at `fabcd3ea`, after two GPT-6.1 Sol High rounds.** This is an AI review, not a GitHub human approval. The ledger is `reviews/dg02-sol-loop.md`.
 
@@ -145,7 +145,7 @@ Status: **implemented and proven locally on the RL1 template; committed on the t
 - the TEMP1 to TEMP3 (RL4) required-mode real-file and differential run;
 - three-OS CI.
 
-The branch is being published as a **draft** PR to start CI. The draft is deliberate: acceptance is incomplete.
+The branch is published as **draft** [PR #9](https://github.com/AMattHT/MaddenTool/pull/9) to start CI. The draft is deliberate: acceptance is incomplete. Labels: `enhancement`, `documentation`, `size:XXL`, `WIP`, `needs-tests`.
 
 | Field | Value |
 |---|---|
@@ -169,7 +169,7 @@ Evidence (Windows 11 x64, Rust 1.99.0, Node 24.17.0); details in `../crates/mt-d
 **Not verified:**
 
 - **TEMP1, TEMP2 and TEMP3** (RL4) have not been read. DG02 was built on the user's laptop, which has no Madden 27 and no copies of them; the originals are on the user's desktop PC. The required-mode run (`MADDENTOOL_REQUIRE_FIXTURES=1`, command in the crate README) is a pending acceptance gate. The template and synthetic tests do not stand in for RL4.
-- **CI** has not run. The three-OS workflow is unrun until the branch is pushed.
+- **CI**: no result yet. The three-OS workflows first run on draft PR #9; their outcome is recorded once they finish.
 - **macOS and Linux at runtime.**
 - **Game acceptance** of any file.
 
@@ -179,8 +179,8 @@ New finding: the legacy `birthdate` decode does not fit the template's values (d
 
 | Finding | Root cause | Issue | Status |
 |---|---|---|---|
-| S1 | Required mode skipped instead of failing when `MADDENTOOL_FIXTURES` or `MADDENTOOL_LEGACY_MDG` was unset | [#7](https://github.com/AMattHT/MaddenTool/issues/7) | Fixed on branch in `84a4a3e9`, PR pending |
-| S2 | The differential never checked that `inspect --json` reported each active slot exactly once, so 389 copies of slot 0 passed | [#8](https://github.com/AMattHT/MaddenTool/issues/8) | Fixed on branch in `84a4a3e9`, PR pending |
+| S1 | Required mode skipped instead of failing when `MADDENTOOL_FIXTURES` or `MADDENTOOL_LEGACY_MDG` was unset | [#7](https://github.com/AMattHT/MaddenTool/issues/7) | Fixed in `84a4a3e9`, in draft PR #9, awaiting merge |
+| S2 | The differential never checked that `inspect --json` reported each active slot exactly once, so 389 copies of slot 0 passed | [#8](https://github.com/AMattHT/MaddenTool/issues/8) | Fixed in `84a4a3e9`, in draft PR #9, awaiting merge |
 
 The fix touches test support, two test files and the crate README only; no reader or CLI code changed.
 
