@@ -52,7 +52,7 @@ The application process was gone after each run. Screenshots stay outside Git un
 
 Fresh checkout: a temporary clone, separate from this working copy and using no reference project or Downloads, passed `npm ci`, `npm run check`, `npm run build -- --bundles nsis` and three native smokes.
 
-One earlier fresh clone built and passed its gates, but its smoke failed once with `Timed out waiting for the injected error state`. The cause was **not established**. It did not recur in 18 later runs (6 before the change, then 6 after narrowing the injection to the `get_app_info` request, plus 6 others including the fresh clone), and the smoke now reports IPC and page state on that timeout. Treat a recurrence in CI as a real signal, not as noise.
+One earlier fresh clone built and passed its gates, but its smoke failed once with `Timed out waiting for the injected error state`. The cause was **not established**. It did not recur in 15 later runs: 6 before any change, 6 after narrowing the injection to the `get_app_info` request, and 3 in the second fresh clone. The smoke now reports IPC and page state on that timeout. Treat a recurrence in CI as a real signal, not as noise.
 
 ### Platform coverage
 
