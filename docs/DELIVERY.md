@@ -112,7 +112,7 @@ Round 2 reviewed `bc4c963` and returned CHANGES.
 
 - **Resolved:** S1, S2 and U1, independently checked by the reviewer: both import orders, repeat imports and reopen; all 91 years; v1 repair; missing-only wAV; Bob Brown and his correction; SQLite integrity and foreign keys; a three-player alias-flattening case.
 - **New, S3 (should):** `mt-data conflicts` omitted merges that reconciliation refused ([#5](https://github.com/AMattHT/MaddenTool/issues/5)).
-- **Fixed on the branch, not pushed, no approval:** `conflicts()` now appends `merge_refused` for every proposal the existing `refusal()` rejects, worded as `reconcile()` words it, and stays read-only.
+- **Fixed on the branch in `dbd32fe`, not pushed, no approval:** `conflicts()` now appends `merge_refused` for every proposal the existing `refusal()` rejects, worded as `reconcile()` words it, and stays read-only.
 
 | Check (Windows 11 x64, Rust 1.99.0) | Result |
 |---|---|
