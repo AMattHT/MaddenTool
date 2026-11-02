@@ -2,15 +2,41 @@
 // Launches the real built application and verifies what the native window shows.
 //
 //   npm run smoke:native -- [--binary path] [--evidence dir]
+//   npm run smoke:native -- --negative-probe <name>
 //
 // Windows: drives WebView2 over the DevTools protocol (full proof).
 // Linux:   drives WebKitGTK through tauri-driver (run under xvfb; DOM proof).
 // macOS:   no WebDriver exists for WKWebView, so this only proves the process starts
 //          and stays alive. It reports "process-only" and must never be read as more.
+//
+// A negative probe is not an acceptance run. It breaks something on purpose, on Windows, and
+// succeeds only if the matching guard fails the run. It never writes smoke.json.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CORE_ACL_PROBES,
+  Cdp,
+  Cleanups,
+  INVALID_ARGUMENTS_PROBE,
+  UNREGISTERED_COMMAND,
+  captureOutput,
+  classifyAclProbe,
+  classifyUnregisteredProbe,
+  cleanUpOnCrash,
+  consoleProblems,
+  diagnoseStartup,
+  interceptFetch,
+  invokeExpression,
+  redact,
+  requestJson,
+  sleep,
+  stopProcess,
+  until,
+  waitForAppTarget,
+  watchProcess,
+} from "./smoke-harness.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -23,31 +49,36 @@ const binary = resolve(
   option("--binary") ?? join(ROOT, "target", "release", `maddentool${isWindows ? ".exe" : ""}`),
 );
 const evidenceDir = option("--evidence");
-const STARTUP_TIMEOUT_MS = 45_000;
+const negativeProbe = option("--negative-probe");
 
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+const consoleProbe = (inject, text) => ({
+  inject: inject(JSON.stringify(text)),
+  expect: new RegExp(`Console errors or CSP violations.*${text}`),
+});
+const NEGATIVE_PROBES = {
+  "console-error": consoleProbe((text) => `console.error(${text})`, "probe-console"),
+  "uncaught-exception": consoleProbe(
+    (text) => `setTimeout(() => { throw new Error(${text}); }, 0)`,
+    "probe-uncaught",
+  ),
+  "unhandled-rejection": consoleProbe(
+    (text) => `void Promise.reject(new Error(${text}))`,
+    "probe-rejection",
+  ),
+  // Only trips where set_title is granted: the ACL answers first in the shipped app.
+  "acl-invalid-arguments": { expect: /Capability boundary not proven.*invalid args/s },
+};
+const probe = negativeProbe ? NEGATIVE_PROBES[negativeProbe] : undefined;
 
-async function until(what, probe, timeoutMs = STARTUP_TIMEOUT_MS) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError;
-  while (Date.now() < deadline) {
-    try {
-      const value = await probe();
-      if (value) return value;
-    } catch (error) {
-      lastError = error;
-    }
-    await sleep(250);
-  }
-  throw new Error(`Timed out waiting for ${what}${lastError ? `: ${lastError.message}` : ""}`);
-}
+const cleanups = new Cleanups();
+cleanUpOnCrash(cleanups);
 
 function expectedFacts() {
   const manifest = readFileSync(join(ROOT, "Cargo.toml"), "utf8");
   const version = /\[workspace\.package\][^[]*?version\s*=\s*"([^"]+)"/.exec(manifest)?.[1];
   if (!version) throw new Error("Could not read the workspace version from Cargo.toml");
   const platform = { win32: "windows", darwin: "macos", linux: "linux" }[process.platform];
-  const rustc = execFileSync("rustc", ["-vV"], { encoding: "utf8" });
+  const rustc = execFileSync("rustc", ["-vV"], { encoding: "utf8", timeout: 30_000 });
   const arch = /^host: ([^-]+)-/m.exec(rustc)?.[1];
   return { Game: "Madden 27", Version: version, Platform: platform, Architecture: arch };
 }
@@ -79,68 +110,6 @@ function checkRendered(state) {
   return assertFacts(state.facts);
 }
 
-function killTree(child) {
-  if (child.exitCode !== null) return;
-  if (isWindows) {
-    execFileSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
-  } else {
-    child.kill("SIGTERM");
-  }
-}
-
-class Cdp {
-  #id = 0;
-  #pending = new Map();
-  events = [];
-  onEvent;
-
-  static async connect(url) {
-    const cdp = new Cdp();
-    cdp.socket = new WebSocket(url);
-    await new Promise((open, fail) => {
-      cdp.socket.addEventListener("open", open, { once: true });
-      cdp.socket.addEventListener("error", () => fail(new Error("CDP connect failed")), {
-        once: true,
-      });
-    });
-    cdp.socket.addEventListener("message", ({ data }) => {
-      const message = JSON.parse(data);
-      if (message.id === undefined) {
-        cdp.events.push(message);
-        cdp.onEvent?.(message);
-        return;
-      }
-      const call = cdp.#pending.get(message.id);
-      cdp.#pending.delete(message.id);
-      if (message.error) call.fail(new Error(message.error.message));
-      else call.done(message.result);
-    });
-    return cdp;
-  }
-
-  send(method, params = {}) {
-    const id = ++this.#id;
-    return new Promise((done, fail) => {
-      this.#pending.set(id, { done, fail });
-      this.socket.send(JSON.stringify({ id, method, params }));
-    });
-  }
-
-  async evaluate(expression) {
-    const { result, exceptionDetails } = await this.send("Runtime.evaluate", {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-    });
-    if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? "eval failed");
-    return result.value;
-  }
-}
-
-// A rejection proves the capability boundary from inside the real webview.
-const denied = (command) => `window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)})
-  .then(() => "ALLOWED", (error) => "denied: " + String(error))`;
-
 // CSS-pixel viewports: a window at 200% zoom has half the CSS pixels.
 const VIEWPORTS = [
   { name: "800x600", width: 800, height: 600, scale: 1 },
@@ -159,46 +128,101 @@ const MEASURE = `JSON.stringify({
   }).length,
 })`;
 
+// Requires Tauri's exact answer from the real webview. Registered core commands are the
+// capability proof. The unregistered command is reported separately.
+async function checkBoundary(cdp) {
+  const probes = CORE_ACL_PROBES.map((entry) =>
+    negativeProbe === "acl-invalid-arguments" && entry.name === INVALID_ARGUMENTS_PROBE.name
+      ? INVALID_ARGUMENTS_PROBE
+      : entry,
+  );
+  const aclDenied = {};
+  const failures = [];
+  for (const { name, command, args: commandArgs } of probes) {
+    const answer = classifyAclProbe(
+      command,
+      await cdp.evaluate(invokeExpression(command, commandArgs)),
+    );
+    if (answer.denied) aclDenied[name] = answer.error;
+    else failures.push({ command, ...answer });
+  }
+  const unregistered = classifyUnregisteredProbe(
+    UNREGISTERED_COMMAND,
+    await cdp.evaluate(invokeExpression(UNREGISTERED_COMMAND)),
+  );
+  if (!unregistered.rejected) failures.push({ command: UNREGISTERED_COMMAND, ...unregistered });
+  if (failures.length > 0) {
+    throw new Error(`Capability boundary not proven: ${JSON.stringify(failures)}`);
+  }
+  const appInfo = await cdp.evaluate(`window.__TAURI_INTERNALS__.invoke("get_app_info")
+    .then((value) => JSON.stringify(value))`);
+  if (JSON.parse(appInfo).game !== "Madden 27") {
+    throw new Error(`Native command mismatch: ${appInfo}`);
+  }
+  return {
+    get_app_info: appInfo,
+    aclDenied,
+    unregisteredCommand: { command: UNREGISTERED_COMMAND, rejection: unregistered.error },
+  };
+}
+
 async function smokeWindows() {
   const port = 9300 + (process.pid % 500);
-  const child = spawn(binary, [], {
-    stdio: "ignore",
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
-    },
-  });
+  let child;
   try {
-    const target = await until("the WebView2 debug target", async () => {
-      const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-      return targets.find((entry) => entry.type === "page");
+    child = spawn(binary, [], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+      },
     });
-    const cdp = await Cdp.connect(target.webSocketDebuggerUrl);
+  } catch (error) {
+    // Some failures throw here instead of raising the process's error event.
+    const diagnosis = { classification: "spawn-error", spawnError: redact(error.message) };
+    throw new Error(`The application could not start; startup=${JSON.stringify(diagnosis)}`);
+  }
+  const app = watchProcess(child, "The application");
+  const readOutput = captureOutput(child);
+  cleanups.add("application", () => stopProcess(child, "The application"));
+  const endpoint = {};
+  let target;
+  let cdp;
+  try {
+    try {
+      target = await waitForAppTarget(
+        async () => {
+          const { json } = await requestJson(`http://127.0.0.1:${port}/json`, {
+            timeoutMs: 5_000,
+          });
+          return json;
+        },
+        { endpoint, guard: app.guard },
+      );
+    } catch (error) {
+      // Gathered before cleanup stops the process, so a blocking dialog is still visible.
+      const diagnosis = await diagnoseStartup({ child, state: app, readOutput, endpoint });
+      throw new Error(`${error.message}; startup=${JSON.stringify(diagnosis)}`, { cause: error });
+    }
+    cdp = await Cdp.connect(target.webSocketDebuggerUrl);
+    cleanups.add("DevTools socket", () => cdp.close());
     await cdp.send("Runtime.enable");
     await cdp.send("Log.enable");
 
     const state = JSON.parse(
-      await until("the startup facts", async () => {
-        const raw = await cdp.evaluate(READ_FACTS);
-        const parsed = JSON.parse(raw);
-        return parsed.alert || Object.keys(parsed.facts).length > 0 ? raw : null;
-      }),
+      await until(
+        "the startup facts",
+        async () => {
+          const raw = await cdp.evaluate(READ_FACTS);
+          const parsed = JSON.parse(raw);
+          return parsed.alert || Object.keys(parsed.facts).length > 0 ? raw : null;
+        },
+        { guard: app.guard },
+      ),
     );
     const facts = checkRendered(state);
 
-    // Prove narrow capabilities from the real webview.
-    const boundary = {
-      get_app_info: await cdp.evaluate(`window.__TAURI_INTERNALS__.invoke("get_app_info")
-        .then((value) => JSON.stringify(value))`),
-      unregistered_command: await cdp.evaluate(denied("read_file")),
-      core_window_plugin: await cdp.evaluate(denied("plugin:window|set_title")),
-      core_webview_plugin: await cdp.evaluate(denied("plugin:webview|create_webview")),
-    };
-    const allowed = Object.entries(boundary).filter(([, value]) => value === "ALLOWED");
-    if (allowed.length > 0) throw new Error(`Not denied: ${allowed.map(([name]) => name)}`);
-    if (JSON.parse(boundary.get_app_info).game !== "Madden 27") {
-      throw new Error(`Native command mismatch: ${boundary.get_app_info}`);
-    }
+    const boundary = await checkBoundary(cdp);
 
     const layouts = [];
     for (const viewport of VIEWPORTS) {
@@ -226,36 +250,40 @@ async function smokeWindows() {
     await cdp.send("Page.enable");
     let injected = false;
     const ipcRequests = [];
-    cdp.onEvent = (event) => {
-      if (event.method !== "Fetch.requestPaused") return;
-      const { requestId, request } = event.params;
+    const interception = interceptFetch(cdp, ({ request }) => {
       ipcRequests.push(`${request.method} ${request.url}`);
       if (injected || request.method !== "POST" || !request.url.includes("get_app_info")) {
-        void cdp.send("Fetch.continueRequest", { requestId });
-        return;
+        return null;
       }
       injected = true;
-      void cdp.send("Fetch.fulfillRequest", {
-        requestId,
-        responseCode: 200,
-        responseHeaders: [
-          { name: "Content-Type", value: "application/json" },
-          { name: "Tauri-Response", value: "ok" },
-          { name: "Access-Control-Allow-Origin", value: "*" },
-          { name: "Access-Control-Expose-Headers", value: "Tauri-Response" },
-        ],
-        body: Buffer.from(JSON.stringify({ injected: true })).toString("base64"),
-      });
-    };
+      return {
+        method: "Fetch.fulfillRequest",
+        params: {
+          responseCode: 200,
+          responseHeaders: [
+            { name: "Content-Type", value: "application/json" },
+            { name: "Tauri-Response", value: "ok" },
+            { name: "Access-Control-Allow-Origin", value: "*" },
+            { name: "Access-Control-Expose-Headers", value: "Tauri-Response" },
+          ],
+          body: Buffer.from(JSON.stringify({ injected: true })).toString("base64"),
+        },
+      };
+    });
+    const releaseInterception = cleanups.add("Fetch interception", () => interception.stop());
     await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*ipc.localhost*" }] });
     await cdp.send("Page.reload");
     const retryButton = `document.querySelector('[role="alert"] button')`;
-    await until("the injected error state", () => cdp.evaluate(`!!${retryButton}`), 20_000).catch(
-      async (error) => {
-        const page = await cdp.evaluate(READ_FACTS).catch(() => "unreadable");
-        throw new Error(`${error.message}; ipc=${JSON.stringify(ipcRequests)}; page=${page}`);
+    await until("the injected error state", () => cdp.evaluate(`!!${retryButton}`), {
+      timeoutMs: 20_000,
+      guard: () => {
+        app.guard();
+        interception.assertHealthy();
       },
-    );
+    }).catch(async (error) => {
+      const page = await cdp.evaluate(READ_FACTS, { timeoutMs: 2_000 }).catch(() => "unreadable");
+      throw new Error(`${error.message}; ipc=${JSON.stringify(ipcRequests)}; page=${page}`);
+    });
     const errorText = await cdp.evaluate(`document.querySelector('[role="alert"]').textContent`);
     if (!/unexpected app information/i.test(errorText)) throw new Error(`Error: ${errorText}`);
     await cdp.send("Emulation.setDeviceMetricsOverride", {
@@ -288,102 +316,152 @@ async function smokeWindows() {
     const enter = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" };
     await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", ...enter });
     await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...enter });
-    await cdp.send("Fetch.disable");
+    releaseInterception();
+    const { teardownRaces } = await interception.stop();
     const recovered = JSON.parse(
-      await until("recovery through Retry", async () => {
-        const raw = await cdp.evaluate(READ_FACTS);
-        return Object.keys(JSON.parse(raw).facts).length > 0 ? raw : null;
-      }),
+      await until(
+        "recovery through Retry",
+        async () => {
+          const raw = await cdp.evaluate(READ_FACTS);
+          return Object.keys(JSON.parse(raw).facts).length > 0 ? raw : null;
+        },
+        { guard: app.guard },
+      ),
     );
     checkRendered(recovered);
 
-    const violations = cdp.events
-      .filter((event) => event.method === "Log.entryAdded")
-      .map((event) => event.params.entry)
-      .filter((entry) => entry.level === "error" || /content security policy/i.test(entry.text));
-    // The rejected payload is deliberate and is not logged as a console error by the app.
-    if (violations.length > 0) {
-      throw new Error(`Console errors or CSP violations: ${JSON.stringify(violations)}`);
+    if (probe?.inject) await cdp.evaluate(probe.inject);
+    // Exceptions and rejections are reported after the task that raised them finishes.
+    await sleep(250);
+    await cdp.evaluate("1");
+    const problems = consoleProblems(cdp.events);
+    if (problems.length > 0) {
+      throw new Error(`Console errors or CSP violations: ${JSON.stringify(problems)}`);
     }
 
-    cdp.socket.close();
     return {
       level: "native-dom-and-ipc",
+      target: target.url,
       facts,
       boundary,
       layouts,
       retry: { errorShown: errorText, ...retryLayout, recoveredWithKeyboard: true },
-      consoleErrors: 0,
+      consoleProblems: 0,
+      teardownRaces,
+      lateCdpResponses: cdp.lateResponses,
     };
-  } finally {
-    killTree(child);
+  } catch (error) {
+    const page = cdp
+      ? await cdp.evaluate("location.href", { timeoutMs: 2_000 }).catch(() => "unreadable")
+      : "not attached";
+    throw new Error(`${error.message}; target=${target?.url ?? "none selected"}; page=${page}`, {
+      cause: error,
+    });
   }
 }
 
 async function smokeLinux() {
   const driver = spawn("tauri-driver", [], { stdio: "inherit" });
+  const driverState = watchProcess(driver, "tauri-driver");
+  cleanups.add("tauri-driver", () => stopProcess(driver, "tauri-driver"));
   const base = "http://127.0.0.1:4444";
-  const call = async (method, path, body) => {
-    const response = await fetch(`${base}${path}`, {
-      method,
-      headers: { "content-type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const { value } = await response.json();
-    if (!response.ok) throw new Error(`${path}: ${value?.message ?? response.status}`);
-    return value;
+  const call = async (method, path, body, timeoutMs) => {
+    const { ok, status, json } = await requestJson(`${base}${path}`, { method, body, timeoutMs });
+    if (!ok) throw new Error(`${path}: ${json.value?.message ?? status}`);
+    return json.value;
   };
-  try {
-    const session = await until("tauri-driver", () =>
-      call("POST", "/session", {
-        capabilities: {
-          alwaysMatch: { browserName: "wry", "tauri:options": { application: binary } },
+  const session = await until(
+    "tauri-driver",
+    () =>
+      call(
+        "POST",
+        "/session",
+        {
+          capabilities: {
+            alwaysMatch: { browserName: "wry", "tauri:options": { application: binary } },
+          },
         },
-      }),
-    );
-    const id = session.sessionId;
-    const raw = await until("the startup facts", async () => {
+        30_000,
+      ),
+    { probeTimeoutMs: 30_000, guard: driverState.guard },
+  );
+  const id = session.sessionId;
+  cleanups.add("WebDriver session", () => call("DELETE", `/session/${id}`));
+  const raw = await until(
+    "the startup facts",
+    async () => {
       const value = await call("POST", `/session/${id}/execute/sync`, {
         script: `return ${READ_FACTS};`,
         args: [],
       });
       const parsed = JSON.parse(value);
       return parsed.alert || Object.keys(parsed.facts).length > 0 ? value : null;
-    });
-    const facts = checkRendered(JSON.parse(raw));
-    await call("DELETE", `/session/${id}`);
-    return { level: "native-dom", facts };
-  } finally {
-    driver.kill("SIGTERM");
-  }
+    },
+    { guard: driverState.guard },
+  );
+  return { level: "native-dom", facts: checkRendered(JSON.parse(raw)) };
 }
 
 async function smokeProcessOnly() {
   const ALIVE_MS = 8_000;
   const child = spawn(binary, [], { stdio: "inherit" });
-  const exited = new Promise((done) => child.once("exit", (code) => done(code ?? "signal")));
-  const outcome = await Promise.race([exited, sleep(ALIVE_MS).then(() => "alive")]);
-  killTree(child);
-  if (outcome !== "alive") throw new Error(`Application exited early with ${outcome}`);
-  return { level: "process-only", note: `Stayed alive ${ALIVE_MS} ms; window content not read.` };
+  const app = watchProcess(child, "The application");
+  cleanups.add("application", () => stopProcess(child, "The application"));
+  const deadline = Date.now() + ALIVE_MS;
+  while (Date.now() < deadline) {
+    app.guard();
+    await sleep(250);
+  }
+  app.guard();
+  return {
+    level: "process-only",
+    note: `Stayed alive ${ALIVE_MS} ms; window content not read.`,
+    rendering: "not proven",
+    ipc: "not proven",
+  };
 }
 
 if (!existsSync(binary)) {
   console.error(`Application binary not found: ${binary}\nBuild it first with: npm run build`);
   process.exit(1);
 }
-if (evidenceDir) mkdirSync(evidenceDir, { recursive: true });
+if (negativeProbe && (!probe || !isWindows)) {
+  console.error(
+    `Negative probes run on Windows only. Available: ${Object.keys(NEGATIVE_PROBES).join(", ")}`,
+  );
+  process.exit(1);
+}
+if (evidenceDir && !probe) mkdirSync(evidenceDir, { recursive: true });
 
 const run = { win32: smokeWindows, linux: smokeLinux, darwin: smokeProcessOnly }[process.platform];
 if (!run) throw new Error(`No smoke strategy for ${process.platform}`);
 
+let result;
+let failure;
 try {
-  const result = await run();
-  const report = JSON.stringify({ platform: process.platform, ...result }, null, 2);
-  console.log(report);
-  if (evidenceDir) writeFileSync(join(evidenceDir, "smoke.json"), `${report}\n`);
-  process.exit(0);
+  result = await run();
 } catch (error) {
-  console.error(`Native smoke failed: ${error.message}`);
+  failure = error;
+}
+const cleanupFailures = await cleanups.run();
+for (const problem of cleanupFailures) console.error(`Cleanup failed: ${problem}`);
+
+if (probe) {
+  const tripped = failure && probe.expect.test(failure.message);
+  console.log(
+    tripped
+      ? `Negative probe ${negativeProbe}: guard failed the run as required.\n${failure.message}`
+      : `Negative probe ${negativeProbe}: GUARD DID NOT TRIP.\n${failure?.message ?? "The run passed."}`,
+  );
+  process.exit(tripped && cleanupFailures.length === 0 ? 0 : 1);
+}
+if (failure) {
+  console.error(`Native smoke failed: ${failure.message}`);
   process.exit(1);
 }
+if (cleanupFailures.length > 0) process.exit(1);
+
+const report = JSON.stringify({ platform: process.platform, ...result }, null, 2);
+console.log(report);
+if (evidenceDir) writeFileSync(join(evidenceDir, "smoke.json"), `${report}\n`);
+process.exit(0);

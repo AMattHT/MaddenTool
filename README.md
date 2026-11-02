@@ -15,7 +15,7 @@ MaddenTool is independent and is not affiliated with EA, MyFranchise or MMC.
   - **macOS:** Xcode Command Line Tools.
   - **Linux (Debian/Ubuntu):**
     ```sh
-    sudo apt-get install libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+    sudo apt-get install build-essential libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
       libayatana-appindicator3-dev librsvg2-dev patchelf file
     ```
 
@@ -26,16 +26,17 @@ Run from the repository root, after `npm ci`.
 | Command | Does |
 |---|---|
 | `npm run dev` | Runs the native app with hot reload |
-| `npm run build` | Builds the UI, the release binary and unsigned installers |
+| `npm run build` | Builds the UI, the release binary and unsigned installers, refusing a stale `Cargo.lock` |
+| `npm run tauri -- build --bundles nsis -- --locked` | The same for chosen bundles. Options before the second `--` go to Tauri and `--locked` after it goes to Cargo, so `npm run build -- --bundles nsis` does not work |
 | `npm run check` | Every gate below |
 | `npm run format:check` / `lint` / `typecheck` / `test` | Frontend and script gates |
 | `npm run provenance:check` | Fails on unlisted files, game data or personal paths ([policy](docs/provenance/README.md)) |
-| `npm run check:rust` | `build:ui`, then rustfmt, clippy and `cargo test` |
+| `npm run check:rust` | `build:ui`, then rustfmt, then clippy and `cargo test` with `--locked` |
 | `npm run smoke:native` | Launches the release binary and checks the window, after `npm run build` |
 
 Rust compiles the built UI into the app, so `ui/dist` must exist before running `cargo` directly. Run `npm run build:ui` first.
 
-`smoke:native` differs by platform. Windows drives the real WebView2 window, including IPC, capability denial, layouts and Retry. Linux reads the window through `tauri-driver` under `xvfb` and needs `webkit2gtk-driver` and `cargo install tauri-driver --version 2.1.0 --locked`. macOS only proves the process stays running, because WKWebView has no WebDriver.
+`smoke:native` differs by platform. Windows drives the real WebView2 window, including IPC, capability denial, console errors, layouts and Retry. It needs the WebView2 Runtime, which Microsoft Edge does not provide; `scripts/ensure-webview2.ps1` is how CI checks for it and installs it only if absent. Linux reads the window through `tauri-driver` under `xvfb` and needs `webkit2gtk-driver` and `cargo install tauri-driver --version 2.1.0 --locked`. macOS only proves the process stays running, because WKWebView has no WebDriver.
 
 ## Layout
 

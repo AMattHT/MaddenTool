@@ -52,7 +52,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+          sudo apt-get install -y build-essential libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
             libayatana-appindicator3-dev librsvg2-dev patchelf file \
             webkit2gtk-driver xvfb
 
@@ -63,9 +63,16 @@ jobs:
 
       # Unsigned and not notarized. Signing belongs to the release packages (WP11).
       - name: Build unsigned bundles
-        run: npm run build -- --bundles ${{ matrix.bundles }}
+        run: npm run tauri -- build --bundles ${{ matrix.bundles }} -- --locked
         env:
           NO_STRIP: "true"
+
+      # Logs which it found. The smoke needs the runtime; Edge does not provide it.
+      - name: Verify the WebView2 Runtime (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        shell: pwsh
+        run: ./scripts/ensure-webview2.ps1
 
       - name: Native smoke (Windows, DOM and IPC)
         if: runner.os == 'Windows'
