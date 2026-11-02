@@ -105,3 +105,21 @@ Real data, both tools, scratch only:
 Dev-trait icons: provenance, hashes and the tier mapping are recorded in `design/draft-generator-higgsfield-brief.md`. They are not committed and no UI is built.
 
 Still not verified: CI, macOS and Linux, any rating, M27 file, or game or MMC import.
+
+### Sol round 2 (GPT-6.1 Sol, High) and S3
+
+Round 2 reviewed `bc4c963` and returned CHANGES.
+
+- **Resolved:** S1, S2 and U1, independently checked by the reviewer: both import orders, repeat imports and reopen; all 91 years; v1 repair; missing-only wAV; Bob Brown and his correction; SQLite integrity and foreign keys; a three-player alias-flattening case.
+- **New, S3 (should):** `mt-data conflicts` omitted merges that reconciliation refused ([#5](https://github.com/AMattHT/MaddenTool/issues/5)).
+- **Fixed on the branch, not pushed, no approval:** `conflicts()` now appends `merge_refused` for every proposal the existing `refusal()` rejects, worded as `reconcile()` words it, and stays read-only.
+
+| Check (Windows 11 x64, Rust 1.99.0) | Result |
+|---|---|
+| CLI at `bc4c963` (Alpha's two 2001 selections, legacy first) | Import and `reconcile` reported `merge_refused: 1`; `conflicts --json` printed `[]`; two Alpha rows |
+| Regressions at `bc4c963` behaviour | `conflicts_lists_merges_reconciliation_refuses` failed (`left: 0, right: 1`). The extended `merge_is_refused_when_external_ids_disagree` failed (`[]` against the `different pfr ids` refusal) |
+| After the fix: fmt, clippy `-D warnings`, `cargo test -p mt-store --locked` | Pass: 37 tests (10 unit, 11 identity, 16 store) |
+| CLI after the fix, same database | `conflicts --json` lists the `merge_refused` entry ("one person would have two selections in legacy-player-lookup 2001 NFL"), matching `reconcile`. The database file SHA-256 is identical before and after `conflicts`. Still two players |
+| Real-data scratch databases (both orders) | `conflicts` still 25 (13 alias, 6 career, 6 college); no refusals exist in the real data |
+
+The next review is round 3, GPT-6.1 Sol on High, scoped to S3 and its delta since `bc4c963`. Issues #2 to #5 stay open until their fixes reach `main`.

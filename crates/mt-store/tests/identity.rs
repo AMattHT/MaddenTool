@@ -384,4 +384,95 @@ fn merge_is_refused_when_external_ids_disagree() {
         r.conflicts
     );
     assert_eq!(store.players_by_year(2002, None).unwrap().len(), 2);
+    // The read-only listing reports the same refusal.
+    assert_eq!(refused(&store.conflicts().unwrap()), refused(&r.conflicts));
+}
+
+fn refused(conflicts: &[mt_store::Conflict]) -> Vec<mt_store::Conflict> {
+    conflicts
+        .iter()
+        .filter(|c| c.kind == "merge_refused")
+        .cloned()
+        .collect()
+}
+
+/// Everything reconciliation can change, as one comparable string.
+fn identity_state(store: &Store) -> String {
+    let mut out = String::new();
+    for sql in [
+        "SELECT group_concat(id || ':' || coalesce(merged_into, '-'), ',') FROM (SELECT * FROM player ORDER BY id)",
+        "SELECT group_concat(id || ':' || player_id, ',') FROM (SELECT * FROM source_record ORDER BY id)",
+        "SELECT group_concat(namespace || value || ':' || player_id, ',') FROM (SELECT * FROM player_external_id ORDER BY 1, 2)",
+        "SELECT count(*) FROM player_merge",
+    ] {
+        let v: Option<String> = store
+            .connection()
+            .query_row(sql, [], |r| r.get::<_, Option<rusqlite::types::Value>>(0))
+            .unwrap()
+            .map(|v| format!("{v:?}"));
+        out.push_str(&v.unwrap_or_default());
+        out.push('|');
+    }
+    out
+}
+
+#[test]
+fn conflicts_lists_merges_reconciliation_refuses() {
+    // Sol round 2, S3 (#5): one person's two 2001 selections. The legacy rows become two
+    // provisional players; nflverse links both selections to one by PFR id. Merging the
+    // second legacy player in would give one person two legacy 2001 NFL selections, so
+    // reconciliation refuses. The dedicated listing must say so too.
+    let dir = tempfile::tempdir().unwrap();
+    let redraft = std::fs::read_to_string(fixture(REDRAFT)).unwrap();
+    let legacy: String = redraft.replace(",1,5,2002,", ",1,5,2001,");
+    assert_ne!(legacy, redraft);
+    let nfl_v1 = std::fs::read_to_string(fixture(NFL_V1)).unwrap();
+    let mut nfl: Vec<String> = vec![nfl_v1.lines().next().unwrap().to_string()];
+    nfl.extend(
+        nfl_v1
+            .lines()
+            .filter(|l| l.starts_with("2001,1,1,") || l.starts_with("2002,1,5,"))
+            .map(|l| l.replacen("2002,1,5,", "2001,1,5,", 1)),
+    );
+    assert_eq!(nfl.len(), 3);
+    let (legacy_csv, nfl_csv) = (dir.path().join("legacy.csv"), dir.path().join("nfl.csv"));
+    std::fs::write(&legacy_csv, legacy).unwrap();
+    std::fs::write(&nfl_csv, nfl.join("\n") + "\n").unwrap();
+
+    let db = dir.path().join("p.db");
+    {
+        let mut store = Store::open(&db).unwrap();
+        let mut opts = options(Format::LegacyPlayerLookup, REDRAFT, Corrections::none());
+        opts.file = legacy_csv;
+        store.import(&opts).unwrap();
+        let mut opts = options(Format::NflverseDraftPicks, NFL_V1, Corrections::none());
+        opts.file = nfl_csv;
+        let s = store.import(&opts).unwrap();
+        assert_eq!(refused(&s.reconciliation.conflicts).len(), 1);
+    }
+
+    let mut store = Store::open_existing(&db).unwrap();
+    let before = identity_state(&store);
+    let listed = store.conflicts().unwrap();
+    assert_eq!(
+        identity_state(&store),
+        before,
+        "conflicts() must not change anything"
+    );
+    let listed = refused(&listed);
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert!(
+        listed[0].detail.contains("two selections"),
+        "{:?}",
+        listed[0]
+    );
+
+    let r = store.reconcile().unwrap();
+    assert!(r.merges.is_empty());
+    assert_eq!(refused(&r.conflicts), listed);
+    assert_eq!(
+        with_surname(&store.players_by_year(2001, None).unwrap(), "Alpha").len(),
+        2,
+        "refused, so still two players"
+    );
 }

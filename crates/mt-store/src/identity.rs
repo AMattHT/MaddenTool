@@ -431,9 +431,25 @@ fn propose(recs: &[Rec]) -> (Vec<Proposal>, Vec<Conflict>) {
 
 /// Unsettled identities in the current data, without changing anything.
 pub fn conflicts(conn: &Connection) -> Result<Vec<Conflict>> {
-    let (_, mut conflicts) = propose(&load(conn)?);
+    let recs = load(conn)?;
+    let (proposals, mut conflicts) = propose(&recs);
+    // A proposal the store would refuse is unsettled too; report it without merging.
+    for p in &proposals {
+        if let Some(why) = refusal(conn, recs[p.a].player_id, recs[p.b].player_id)? {
+            refused_conflict(&mut conflicts, &recs, p, &why);
+        }
+    }
     dedup(&mut conflicts);
     Ok(conflicts)
+}
+
+fn refused_conflict(out: &mut Vec<Conflict>, recs: &[Rec], p: &Proposal, why: &str) {
+    conflict(
+        out,
+        "merge_refused",
+        recs[p.a].year,
+        format!("{} and {}: {why}", recs[p.a].short(), recs[p.b].short()),
+    );
 }
 
 fn dedup(conflicts: &mut Vec<Conflict>) {
@@ -464,12 +480,7 @@ pub fn reconcile(conn: &Connection, import_id: Option<i64>) -> Result<Reconcilia
                     merges.push(m);
                     changed = true;
                 }
-                Err(why) => conflict(
-                    &mut refused,
-                    "merge_refused",
-                    recs[p.a].year,
-                    format!("{} and {}: {why}", recs[p.a].short(), recs[p.b].short()),
-                ),
+                Err(why) => refused_conflict(&mut refused, &recs, p, &why),
             }
         }
         if !changed {
