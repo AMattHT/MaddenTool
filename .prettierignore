@@ -1,0 +1,8 @@
+docs/
+target/
+dist/
+app/src-tauri/gen/
+app/src-tauri/icons/
+package-lock.json
+Cargo.lock
+*.md
