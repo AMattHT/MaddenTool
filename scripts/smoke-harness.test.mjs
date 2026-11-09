@@ -3,7 +3,10 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createTcpServer } from "node:net";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,22 +15,33 @@ import {
   CdpClosedError,
   Cleanups,
   FatalWaitError,
+  OTHER_APP_ORIGIN,
   TimeoutError,
+  WEBVIEW2_DEBUG_ARGUMENTS,
+  WEBVIEW2_PROFILE_PREFIX,
   captureOutput,
   classifyAclProbe,
   classifyStartup,
   classifyUnregisteredProbe,
   consoleProblems,
+  createWebView2Profile,
   diagnoseStartup,
+  findOwnDevTools,
+  inspectWebView2Profile,
   interceptFetch,
+  isAppUrl,
+  parseDevToolsActivePort,
   redact,
+  removeWebView2Profile,
   requestJson,
   selectAppTarget,
   sleep,
+  startWebDriverSession,
   stopProcess,
   until,
   waitForAppTarget,
   watchProcess,
+  webDriverClient,
   withTimeout,
 } from "./smoke-harness.mjs";
 
@@ -778,6 +792,490 @@ test(
       assert.ok(Array.isArray(diagnosis.process.childProcesses));
     } finally {
       await stopProcess(child, "child");
+    }
+  },
+);
+
+// --- WebView2 debug endpoint scoped to the run's profile
+
+const BROWSER_PATH = "/devtools/browser/0b1c2d3e-0000-4000-8000-000000000001";
+const FOREIGN_PATH = "/devtools/browser/0b1c2d3e-0000-4000-8000-000000000002";
+const notFound = () => Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+
+test("DevToolsActivePort is read only in the form Chromium writes", () => {
+  assert.deepEqual(parseDevToolsActivePort(`60419\n${BROWSER_PATH}`), {
+    port: 60419,
+    browserPath: BROWSER_PATH,
+  });
+  assert.equal(parseDevToolsActivePort(`60419\r\n${BROWSER_PATH}\n`).port, 60419);
+  for (const text of ["", "60419", "60419\n", `0\n${BROWSER_PATH}`, `70000\n${BROWSER_PATH}`]) {
+    assert.throws(() => parseDevToolsActivePort(text), /DevToolsActivePort/, JSON.stringify(text));
+  }
+  assert.throws(() => parseDevToolsActivePort("60419\n/devtools/page/1"), /no browser target/);
+  assert.throws(() => parseDevToolsActivePort(`-1\n${BROWSER_PATH}`), /no valid port/);
+});
+
+test("the debug server is not looked for before the profile records one", async () => {
+  const endpoint = {};
+  let asked = 0;
+  await assert.rejects(
+    findOwnDevTools({
+      readPortFile: async () => {
+        throw notFound();
+      },
+      requestVersion: async () => {
+        asked += 1;
+      },
+      endpoint,
+    }),
+    /DevToolsActivePort not written/,
+  );
+  assert.equal(endpoint.devToolsActivePort, "absent");
+  assert.equal(asked, 0);
+});
+
+test("another browser answering the port is refused, and this one is found on ::1", async () => {
+  const asked = [];
+  const endpoint = {};
+  const found = await findOwnDevTools({
+    readPortFile: async () => `9555\n${BROWSER_PATH}`,
+    requestVersion: async (url) => {
+      asked.push(url);
+      const path = url.startsWith("http://127.0.0.1") ? FOREIGN_PATH : BROWSER_PATH;
+      return { webSocketDebuggerUrl: `ws://host:9555${path}` };
+    },
+    endpoint,
+  });
+  assert.deepEqual(found, { host: "[::1]", port: 9555, base: "http://[::1]:9555" });
+  assert.deepEqual(asked, ["http://127.0.0.1:9555/json/version", "http://[::1]:9555/json/version"]);
+  assert.equal(endpoint.host, "[::1]");
+});
+
+test("a port owned only by other browsers is reported, never used", async () => {
+  const endpoint = {};
+  await assert.rejects(
+    findOwnDevTools({
+      readPortFile: async () => `9555\n${BROWSER_PATH}`,
+      requestVersion: async (url) => {
+        if (url.includes("[::1]")) throw new Error("fetch failed: ECONNREFUSED");
+        return { webSocketDebuggerUrl: `ws://127.0.0.1:9555${FOREIGN_PATH}` };
+      },
+      endpoint,
+    }),
+    /No debug server for this profile on port 9555: 127\.0\.0\.1: another browser/,
+  );
+  assert.equal(endpoint.hostsTried.length, 2);
+  assert.match(endpoint.hostsTried[1], /ECONNREFUSED/);
+});
+
+/** A real HTTP server that answers /json/version as a browser with `path` would. */
+async function versionServer(path) {
+  const server = createServer((request, response) => {
+    response.writeHead(request.url === "/json/version" ? 200 : 404, {
+      "content-type": "application/json",
+    });
+    const { port } = server.address();
+    response.end(JSON.stringify({ webSocketDebuggerUrl: `ws://127.0.0.1:${port}${path}` }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return server;
+}
+
+test("over real sockets, only the server with this profile's browser target is accepted", async () => {
+  const foreign = await versionServer(FOREIGN_PATH);
+  const own = await versionServer(BROWSER_PATH);
+  const requestVersion = async (url) => (await requestJson(url, { timeoutMs: 2_000 })).json;
+  try {
+    // Nothing listens on ::1 at the foreign port, so both addresses are tried and refused.
+    await assert.rejects(
+      findOwnDevTools({
+        readPortFile: async () => `${foreign.address().port}\n${BROWSER_PATH}`,
+        requestVersion,
+      }),
+      /another browser/,
+    );
+    const found = await findOwnDevTools({
+      readPortFile: async () => `${own.address().port}\n${BROWSER_PATH}`,
+      requestVersion,
+    });
+    assert.equal(found.host, "127.0.0.1");
+  } finally {
+    for (const server of [foreign, own]) server.close();
+  }
+});
+
+test("the WebView2 arguments choose a free port and keep a log in the profile", () => {
+  assert.match(WEBVIEW2_DEBUG_ARGUMENTS, /--remote-debugging-port=0( |$)/);
+  assert.match(WEBVIEW2_DEBUG_ARGUMENTS, /--enable-logging/);
+});
+
+const scratch = () => mkdtempSync(join(tmpdir(), "maddentool-smoke-test-"));
+
+test("each profile is fresh, and only a smoke profile under its root is removed", async () => {
+  const root = scratch();
+  try {
+    const profiles = join(root, "profiles");
+    const first = createWebView2Profile(profiles);
+    const second = createWebView2Profile(profiles);
+    assert.notEqual(first, second);
+    assert.equal(dirname(first), profiles);
+    assert.ok(basename(first).startsWith(WEBVIEW2_PROFILE_PREFIX));
+    writeFileSync(join(first, "file"), "x");
+
+    const outsider = join(root, "keep");
+    mkdirSync(outsider);
+    const unprefixed = join(profiles, "keep");
+    mkdirSync(unprefixed);
+    await assert.rejects(removeWebView2Profile(profiles, outsider), /Refusing/);
+    await assert.rejects(removeWebView2Profile(profiles, unprefixed), /Refusing/);
+    await assert.rejects(removeWebView2Profile(root, first), /Refusing/);
+    assert.ok(existsSync(outsider) && existsSync(unprefixed) && existsSync(first));
+
+    await removeWebView2Profile(profiles, first);
+    assert.ok(!existsSync(first));
+    assert.deepEqual(readdirSync(profiles).sort(), [basename(second), "keep"].sort());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** Holds a file open without delete sharing, as the WebView2 crash handler did, for `ms`. */
+async function holdFile(path, ms) {
+  const literal = path.replace(/'/g, "''");
+  const script = [
+    `$f = [System.IO.File]::Open('${literal}', 'Open', 'Read', 'None')`,
+    "[Console]::Out.WriteLine('held')",
+    "[Console]::Out.Flush()",
+    `Start-Sleep -Milliseconds ${ms}`,
+    "$f.Close()",
+  ].join("; ");
+  const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script]);
+  await once(child.stdout, "data");
+  return child;
+}
+
+test(
+  "a profile file held for a moment after the browser stops is still removed",
+  { skip: process.platform !== "win32" && "Windows file sharing" },
+  async () => {
+    const root = scratch();
+    const profile = createWebView2Profile(root);
+    const held = join(profile, "settings.dat");
+    writeFileSync(held, "x");
+    const holder = await holdFile(held, 1_500);
+    try {
+      await removeWebView2Profile(root, profile, { timeoutMs: 10_000 });
+      assert.ok(!existsSync(profile));
+    } finally {
+      await stopProcess(holder, "holder");
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "a profile file held past the deadline fails the cleanup instead of passing silently",
+  { skip: process.platform !== "win32" && "Windows file sharing" },
+  async () => {
+    const root = scratch();
+    const profile = createWebView2Profile(root);
+    const held = join(profile, "settings.dat");
+    writeFileSync(held, "x");
+    const holder = await holdFile(held, 20_000);
+    try {
+      await assert.rejects(removeWebView2Profile(root, profile, { timeoutMs: 300 }), /EBUSY|EPERM/);
+    } finally {
+      await stopProcess(holder, "holder");
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("the profile shows whether a browser used it and started a debug server", () => {
+  const root = scratch();
+  try {
+    assert.deepEqual(inspectWebView2Profile(join(root, "unused")), { dataFolderCreated: false });
+    const data = join(root, "used", "EBWebView");
+    mkdirSync(data, { recursive: true });
+    const lines = [
+      "[1:2:1108/1.0:INFO:x.cc] ordinary",
+      `[1:2:1108/1.1:ERROR:devtools_http_handler.cc] Cannot start http server ${"x".repeat(400)}`,
+      ...Array.from({ length: 20 }, (_, index) => `[1:2:1108/2.${index}:ERROR:x.cc] e${index}`),
+    ];
+    writeFileSync(join(data, "chrome_debug.log"), lines.join("\n"));
+    const seen = inspectWebView2Profile(join(root, "used"), { lineLimit: 3, lineLength: 50 });
+    assert.equal(seen.dataFolderCreated, true);
+    assert.equal(seen.devToolsActivePort, "absent");
+    assert.deepEqual(
+      seen.logLines.map((line) => line.slice(-3)),
+      ["e17", "e18", "e19"],
+    );
+    const all = inspectWebView2Profile(join(root, "used"), { lineLimit: 30, lineLength: 80 });
+    assert.ok(all.logLines.some((line) => /Cannot start http server/.test(line)));
+    assert.ok(all.logLines.every((line) => line.length <= 80 && !/ordinary/.test(line)));
+    writeFileSync(join(data, "DevToolsActivePort"), `1\n${BROWSER_PATH}`);
+    assert.equal(inspectWebView2Profile(join(root, "used")).devToolsActivePort, "present");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the profile tells an unused override from a debug server that never started", () => {
+  const live = { runtimeVersions: ["155.0.4283.62"], mainWindowTitle: "MaddenTool" };
+  const used = (devToolsActivePort) => ({ dataFolderCreated: true, devToolsActivePort });
+  assert.equal(
+    classifyStartup({ ...live, profile: { dataFolderCreated: false } }),
+    "webview2-profile-not-used",
+  );
+  assert.equal(classifyStartup({ ...live, profile: used("absent") }), "debug-server-not-started");
+  assert.equal(
+    classifyStartup({ ...live, profile: used("present") }),
+    "debug-endpoint-unreachable",
+  );
+  // A dialog or an exit still explains more than the profile does.
+  assert.equal(
+    classifyStartup({ ...live, mainWindowTitle: "Error", profile: { dataFolderCreated: false } }),
+    "blocked-on-native-error-dialog",
+  );
+});
+
+test("the diagnosis carries the profile's observations", async () => {
+  const child = idleChild();
+  await once(child.stdout, "data");
+  try {
+    const diagnosis = await diagnoseStartup({
+      child,
+      state: watchProcess(child, "child"),
+      endpoint: { attempts: 2, answered: 0, devTools: { devToolsActivePort: "absent" } },
+      profile: { dataFolderCreated: true, devToolsActivePort: "absent", logLines: [] },
+      inspect: async () => ({
+        runtime: { HKLM: "155.0.4283.62" },
+        mainWindowTitle: "MaddenTool",
+        childProcesses: ["msedgewebview2.exe"],
+        grandchildProcesses: ["msedgewebview2.exe"],
+      }),
+    });
+    assert.equal(diagnosis.classification, "debug-server-not-started");
+    assert.deepEqual(diagnosis.process.grandchildProcesses, ["msedgewebview2.exe"]);
+    assert.equal(diagnosis.webView2Profile.devToolsActivePort, "absent");
+    assert.equal(diagnosis.endpoint.devTools.devToolsActivePort, "absent");
+  } finally {
+    await stopProcess(child, "child");
+  }
+});
+
+test("application URLs are compared by scheme and host", () => {
+  assert.ok(isAppUrl("tauri://localhost/", OTHER_APP_ORIGIN));
+  assert.ok(isAppUrl("tauri://localhost/index.html", OTHER_APP_ORIGIN));
+  for (const url of [
+    "about:blank",
+    "tauri://localhost.evil/",
+    "http://localhost/",
+    "",
+    undefined,
+  ]) {
+    assert.equal(isAppUrl(url, OTHER_APP_ORIGIN), false, String(url));
+  }
+});
+
+// --- Linux: tauri-driver session, against a driver stub over real HTTP
+
+/**
+ * Answers like tauri-driver in front of WebKitWebDriver: GET /status and POST /session.
+ * A `sessionDelayMs` of null never answers the session.
+ */
+async function driverStub({
+  readyAfter = 0,
+  sessionDelayMs = 0,
+  stallStatusAfter = Infinity,
+} = {}) {
+  const seen = { status: 0, sessions: 0, aborted: 0 };
+  const server = createServer((request, response) => {
+    const reply = (value, code = 200) => {
+      response.writeHead(code, { "content-type": "application/json" });
+      response.end(JSON.stringify({ value }));
+    };
+    if (request.method === "GET" && request.url === "/status") {
+      seen.status += 1;
+      if (seen.status > stallStatusAfter) return;
+      const ready = seen.status > readyAfter;
+      reply({ ready, message: ready ? "No sessions" : "A session already exists" });
+      return;
+    }
+    if (request.method === "POST" && request.url === "/session") {
+      seen.sessions += 1;
+      request.resume();
+      response.on("close", () => {
+        if (!response.writableFinished) seen.aborted += 1;
+      });
+      if (sessionDelayMs === null) return;
+      setTimeout(() => reply({ sessionId: `s${seen.sessions}`, capabilities: {} }), sessionDelayMs);
+      return;
+    }
+    reply({ error: "unknown command", message: "unknown" }, 404);
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return {
+    seen,
+    call: webDriverClient(`http://127.0.0.1:${server.address().port}`),
+    close: () => {
+      server.closeAllConnections();
+      server.close();
+    },
+  };
+}
+
+const CAPABILITIES = { alwaysMatch: { browserName: "wry" } };
+
+test("a slow session is created once, after the driver reports ready", async () => {
+  const stub = await driverStub({ readyAfter: 2, sessionDelayMs: 300 });
+  try {
+    const { session, sessionMs } = await startWebDriverSession(stub.call, CAPABILITIES, {
+      sessionTimeoutMs: 5_000,
+      intervalMs: 1,
+    });
+    assert.equal(session.sessionId, "s1");
+    assert.ok(sessionMs >= 250, `took ${sessionMs} ms`);
+    assert.equal(stub.seen.sessions, 1);
+    assert.equal(stub.seen.status, 3);
+  } finally {
+    stub.close();
+  }
+});
+
+test("the earlier per-attempt limit relaunched a slow session instead of waiting", async () => {
+  // The shape of the harness on 2fc171f: POST /session polled with a probe limit shorter than
+  // the session takes. Every attempt is a new launch, so none can finish.
+  const stub = await driverStub({ sessionDelayMs: 300 });
+  try {
+    await assert.rejects(
+      until("tauri-driver", (signal) => stub.call("POST", "/session", {}, 10_000, signal), {
+        timeoutMs: 500,
+        probeTimeoutMs: 200,
+        intervalMs: 1,
+      }),
+      /Timed out waiting for tauri-driver: Probe for tauri-driver timed out/,
+    );
+    assert.ok(stub.seen.sessions >= 2, `${stub.seen.sessions} sessions requested`);
+  } finally {
+    stub.close();
+  }
+});
+
+test("a session that never comes fails at its deadline, with one request, aborted", async () => {
+  const stub = await driverStub({ sessionDelayMs: null });
+  try {
+    const took = await elapsed(() =>
+      assert.rejects(
+        startWebDriverSession(stub.call, CAPABILITIES, { sessionTimeoutMs: 200 }),
+        /Creating the WebDriver session timed out after 200 ms/,
+      ),
+    );
+    assert.ok(took < 2_000, `took ${took} ms`);
+    await sleep(100);
+    assert.equal(stub.seen.sessions, 1);
+    assert.equal(stub.seen.aborted, 1);
+  } finally {
+    stub.close();
+  }
+});
+
+test("a driver that exits ends the session wait at once", async () => {
+  const stub = await driverStub({ sessionDelayMs: null });
+  const driver = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(4), 150)"]);
+  try {
+    const took = await elapsed(() =>
+      assert.rejects(
+        startWebDriverSession(stub.call, CAPABILITIES, {
+          watch: watchProcess(driver, "tauri-driver"),
+          sessionTimeoutMs: 20_000,
+        }),
+        /tauri-driver exited early with code 4/,
+      ),
+    );
+    assert.ok(took < 5_000, `took ${took} ms`);
+  } finally {
+    stub.close();
+  }
+});
+
+test("a driver that never becomes ready is reported with its message", async () => {
+  const stub = await driverStub({ readyAfter: Infinity });
+  try {
+    await assert.rejects(
+      startWebDriverSession(stub.call, CAPABILITIES, { readyTimeoutMs: 100, intervalMs: 1 }),
+      (error) => {
+        assert.match(error.message, /Timed out waiting for tauri-driver to accept a session/);
+        assert.match(error.message, /A session already exists/);
+        return true;
+      },
+    );
+    assert.equal(stub.seen.sessions, 0);
+  } finally {
+    stub.close();
+  }
+});
+
+test("a later stalled readiness probe keeps the last driver status", async () => {
+  const stub = await driverStub({ readyAfter: Infinity, stallStatusAfter: 1 });
+  try {
+    await assert.rejects(
+      startWebDriverSession(stub.call, CAPABILITIES, {
+        readyTimeoutMs: 1_000,
+        intervalMs: 1,
+      }),
+      /last driver status: A session already exists/,
+    );
+    assert.equal(stub.seen.status, 2);
+    assert.equal(stub.seen.sessions, 0);
+  } finally {
+    stub.close();
+  }
+});
+
+test(
+  "stopping a driver's process group also stops what it launched",
+  { skip: process.platform === "win32" && "POSIX process groups" },
+  async () => {
+    // The leader starts a long-lived grandchild, as WebKitWebDriver starts the application.
+    const grandchildCode = "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)";
+    const leaderCode = [
+      'const { spawn } = require("node:child_process");',
+      `const child = spawn(process.execPath, ["-e", ${JSON.stringify(grandchildCode)}], { stdio: "ignore" });`,
+      "console.log(child.pid);",
+      "setInterval(() => {}, 1000);",
+    ].join("\n");
+    const leader = spawn(process.execPath, ["-e", leaderCode], {
+      detached: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    try {
+      const [line] = await once(leader.stdout, "data");
+      const grandchild = Number(String(line).trim());
+      const alive = (pid) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      assert.ok(alive(grandchild));
+      await stopProcess(leader, "driver", { group: true, graceMs: 300 });
+      assert.ok(leader.exitCode !== null || leader.signalCode !== null);
+      assert.equal(alive(grandchild), false);
+    } finally {
+      // Independent of stopProcess: a failing assertion or cleanup check must not orphan
+      // the test's detached group on the hosted POSIX runner.
+      if (leader.pid !== undefined) {
+        try {
+          process.kill(-leader.pid, "SIGKILL");
+        } catch (error) {
+          assert.equal(error.code, "ESRCH", "test process-group cleanup failed");
+        }
+      }
     }
   },
 );

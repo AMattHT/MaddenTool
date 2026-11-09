@@ -13,6 +13,7 @@
 // succeeds only if the matching guard fails the run. It never writes smoke.json.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -20,22 +21,32 @@ import {
   Cdp,
   Cleanups,
   INVALID_ARGUMENTS_PROBE,
+  OTHER_APP_ORIGIN,
   UNREGISTERED_COMMAND,
+  WEBVIEW2_DEBUG_ARGUMENTS,
   captureOutput,
   classifyAclProbe,
   classifyUnregisteredProbe,
   cleanUpOnCrash,
   consoleProblems,
+  createWebView2Profile,
   diagnoseStartup,
+  findOwnDevTools,
+  inspectWebView2Profile,
   interceptFetch,
   invokeExpression,
+  isAppUrl,
   redact,
+  removeWebView2Profile,
   requestJson,
   sleep,
+  startWebDriverSession,
   stopProcess,
   until,
   waitForAppTarget,
   watchProcess,
+  webDriverClient,
+  webView2DataFolder,
 } from "./smoke-harness.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -50,6 +61,8 @@ const binary = resolve(
 );
 const evidenceDir = option("--evidence");
 const negativeProbe = option("--negative-probe");
+// Each Windows run gets a fresh WebView2 profile here, removed afterwards.
+const profileRoot = resolve(option("--profile-root") ?? join(ROOT, ".smoke", "webview2-profiles"));
 
 const consoleProbe = (inject, text) => ({
   inject: inject(JSON.stringify(text)),
@@ -100,7 +113,8 @@ const READ_FACTS = `(() => {
     facts[row.querySelector("dt").textContent] = row.querySelector("dd").textContent;
   }
   const alert = document.querySelector('[role="alert"]');
-  return JSON.stringify({ title: document.title, heading: document.querySelector("h1")?.textContent,
+  return JSON.stringify({ url: location.href, title: document.title,
+    heading: document.querySelector("h1")?.textContent,
     facts, alert: alert ? alert.textContent : null });
 })()`;
 
@@ -167,14 +181,19 @@ async function checkBoundary(cdp) {
 }
 
 async function smokeWindows() {
-  const port = 9300 + (process.pid % 500);
+  // The debug server belongs to this run's profile: the browser picks a free port and records it
+  // there. A fixed port could be held by another WebView2 app, whose page has the same origin.
+  const profile = createWebView2Profile(profileRoot);
+  cleanups.add("WebView2 profile", () => removeWebView2Profile(profileRoot, profile));
+  const portFile = join(webView2DataFolder(profile), "DevToolsActivePort");
   let child;
   try {
     child = spawn(binary, [], {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
-        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+        WEBVIEW2_USER_DATA_FOLDER: profile,
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: WEBVIEW2_DEBUG_ARGUMENTS,
       },
     });
   } catch (error) {
@@ -186,22 +205,42 @@ async function smokeWindows() {
   const readOutput = captureOutput(child);
   cleanups.add("application", () => stopProcess(child, "The application"));
   const endpoint = {};
+  const discovery = {};
+  let devTools;
   let target;
   let cdp;
   try {
     try {
       target = await waitForAppTarget(
-        async () => {
-          const { json } = await requestJson(`http://127.0.0.1:${port}/json`, {
-            timeoutMs: 5_000,
+        async (signal) => {
+          devTools ??= await findOwnDevTools({
+            readPortFile: () => readFile(portFile, "utf8"),
+            requestVersion: async (url) =>
+              (await requestJson(url, { timeoutMs: 2_000, signal })).json,
+            endpoint: discovery,
           });
-          return json;
+          const { json } = await requestJson(`${devTools.base}/json/list`, {
+            timeoutMs: 5_000,
+            signal,
+          });
+          // Page sockets are on the same server; anything else is not this run's browser.
+          return json.filter(
+            (entry) =>
+              !entry.webSocketDebuggerUrl ||
+              new URL(entry.webSocketDebuggerUrl).port === String(devTools.port),
+          );
         },
         { endpoint, guard: app.guard },
       );
     } catch (error) {
       // Gathered before cleanup stops the process, so a blocking dialog is still visible.
-      const diagnosis = await diagnoseStartup({ child, state: app, readOutput, endpoint });
+      const diagnosis = await diagnoseStartup({
+        child,
+        state: app,
+        readOutput,
+        endpoint: { ...endpoint, devTools: discovery },
+        profile: inspectWebView2Profile(profile),
+      });
       throw new Error(`${error.message}; startup=${JSON.stringify(diagnosis)}`, { cause: error });
     }
     cdp = await Cdp.connect(target.webSocketDebuggerUrl);
@@ -342,6 +381,11 @@ async function smokeWindows() {
     return {
       level: "native-dom-and-ipc",
       target: target.url,
+      debugEndpoint: {
+        host: devTools.host,
+        port: "chosen by the browser, read from this run's DevToolsActivePort",
+        profile: "fresh per run, removed afterwards",
+      },
       facts,
       boundary,
       layouts,
@@ -360,30 +404,21 @@ async function smokeWindows() {
   }
 }
 
+// Observed on the hosted ubuntu-24.04 runner: one session took about 32 s to create, most of it
+// before WebKitGTK initialised EGL, because tauri-driver launches the application for it. A retry
+// is a new launch that starts that wait again, so the session gets one long attempt.
+const SESSION_TIMEOUT_MS = 90_000;
+
 async function smokeLinux() {
-  const driver = spawn("tauri-driver", [], { stdio: "inherit" });
+  // Its own process group, so cleanup also reaches WebKitWebDriver and the application it launched.
+  const driver = spawn("tauri-driver", [], { stdio: "inherit", detached: true });
   const driverState = watchProcess(driver, "tauri-driver");
-  cleanups.add("tauri-driver", () => stopProcess(driver, "tauri-driver"));
-  const base = "http://127.0.0.1:4444";
-  const call = async (method, path, body, timeoutMs) => {
-    const { ok, status, json } = await requestJson(`${base}${path}`, { method, body, timeoutMs });
-    if (!ok) throw new Error(`${path}: ${json.value?.message ?? status}`);
-    return json.value;
-  };
-  const session = await until(
-    "tauri-driver",
-    () =>
-      call(
-        "POST",
-        "/session",
-        {
-          capabilities: {
-            alwaysMatch: { browserName: "wry", "tauri:options": { application: binary } },
-          },
-        },
-        30_000,
-      ),
-    { probeTimeoutMs: 30_000, guard: driverState.guard },
+  cleanups.add("tauri-driver", () => stopProcess(driver, "tauri-driver", { group: true }));
+  const call = webDriverClient("http://127.0.0.1:4444");
+  const { session, sessionMs } = await startWebDriverSession(
+    call,
+    { alwaysMatch: { browserName: "wry", "tauri:options": { application: binary } } },
+    { watch: driverState, sessionTimeoutMs: SESSION_TIMEOUT_MS },
   );
   const id = session.sessionId;
   cleanups.add("WebDriver session", () => call("DELETE", `/session/${id}`));
@@ -399,7 +434,11 @@ async function smokeLinux() {
     },
     { guard: driverState.guard },
   );
-  return { level: "native-dom", facts: checkRendered(JSON.parse(raw)) };
+  const state = JSON.parse(raw);
+  if (!isAppUrl(state.url, OTHER_APP_ORIGIN)) {
+    throw new Error(`The session is not on the application page: ${state.url}`);
+  }
+  return { level: "native-dom", target: state.url, sessionMs, facts: checkRendered(state) };
 }
 
 async function smokeProcessOnly() {
