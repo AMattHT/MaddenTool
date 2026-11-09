@@ -48,3 +48,5 @@ It cannot determine licensing from file contents. A person writes each record an
 ## Known limits
 
 This check covers tracked files only. It does not yet produce third-party notices for npm and Cargo dependencies or show them in the app: the About screen is `DG-SHELL-04` (WP01b) and the release gate is WP11. `XP-015` stays `discovered` until those are met.
+
+The DG05 concept frames under `docs/design/concepts/` and their two `comparison.html` pages embed the five EA development-trait icons, added at the user's explicit request. Their entries name that source, record redistribution rights as not verified and set `ships` to `false`. The two Higgsfield raw images record that the service's terms are not in the repository. Passing this check does not settle either question; whether that material stays in Git is still open.

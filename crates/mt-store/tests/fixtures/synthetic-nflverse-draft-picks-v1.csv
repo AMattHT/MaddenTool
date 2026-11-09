@@ -1,0 +1,10 @@
+season,round,pick,team,gsis_id,pfr_player_id,cfb_player_id,pfr_player_name,hof,position,category,side,college,age,to,allpro,probowls,seasons_started,w_av,car_av,dr_av,games,pass_completions,pass_attempts,pass_yards,pass_tds,pass_ints,rush_atts,rush_yards,rush_tds,receptions,rec_yards,rec_tds,def_solo_tackles,def_ints,def_sacks
+2001,1,1,AAA,SYN0000001,SyntAl00,synthetic-alpha-1,Synthetic Alpha,FALSE,QB,QB,O,Example State,22,2015,2,5,12,120,,110,190,,,,,,,,,,,,,,
+2001,1,2,BBB,SYN0000002,SyntBr00,,Synthetic Bravo Jr.,FALSE,DB,DB,D,Fixture Tech,21,2004,0,0,1,0,,0,30,,,,,,,,,,,,,,
+2001,2,33,CCC,,,,Synthetic Charlie,FALSE,WR,WR,O,,23,,,,,,,,,,,,,,,,,,,,,,
+2001,3,70,AAA,SYN0000004,SyntDe00,,Synthétic Délta,FALSE,QB,QB,O,Example State,22,2006,0,0,2,15,,9,60,,,,,,,,,,,,,,
+2002,1,5,DDD,SYN0000001,SyntAl00,synthetic-alpha-1,Synthetic Alpha,FALSE,QB,QB,O,Example State,23,2015,2,5,12,120,,110,190,,,,,,,,,,,,,,
+2026,1,1,EEE,SYN0000006,SyntEc00,,Synthetic Echo,FALSE,QB,QB,O,Fixture Tech,21,2026,0,0,0,0,,0,7,,,,,,,,,,,,,,
+abc,1,1,AAA,,,,Synthetic Invalid,FALSE,QB,QB,O,,22,,,,,,,,,,,,,,,,,,,,,,
+2001,4,100,FFF,SYN0000008,SyntFo00,,Synthetic Foxtrot,FALSE,TE,TE,O,,22,2003,0,0,0,12.5,,3,20,,,,,,,,,,,,,,
+2001,1,2,BBB,SYN0000009,SyntDu00,,Synthetic Duplicate,FALSE,LB,LB,D,,22,2002,0,0,0,1,,1,5,,,,,,,,,,,,,,

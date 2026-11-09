@@ -59,6 +59,13 @@ for (const path of [
   "ratings.json",
   "bundle.js",
   "data.toml",
+  "crates/mt-store/data/ratings.json",
+  "crates/mt-store/tests/fixtures/draft_picks.csv",
+  "crates/mt-store/Cargo.lock",
+  "docs/design/concepts/dg05-concept-b2/assembled/A-dark-1440x900.png",
+  "docs/design/concepts/dg05-concept-a/assembled/dev-icon-superstar.png",
+  "docs/design/concepts/dg05-concept-a/source/build_extra.py",
+  "docs/design/concepts/dg05-concept-b1/comparison-inline.html",
 ]) {
   test(`needs a specific record in the real manifest: ${path}`, () => {
     const problems = evaluate([...trackedFiles, file(path)], realManifest);
@@ -71,6 +78,10 @@ for (const path of [
   "app/src-tauri/src/feature/mod.rs",
   "docs/prompts/02-next.md",
   "scripts/another.mjs",
+  "crates/mt-store/src/ratings.rs",
+  "crates/mt-store/tests/ratings.rs",
+  "docs/reviews/dg05-concept-b2-sol-loop.md",
+  "docs/design/concepts/dg05-concept-b2/DECISIONS.md",
 ]) {
   test(`reviewable source stays accepted in the real manifest: ${path}`, () => {
     assert.deepEqual(evaluate([...trackedFiles, file(path)], realManifest), []);

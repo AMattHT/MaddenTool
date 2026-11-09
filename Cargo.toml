@@ -1,8 +1,8 @@
 # Later crates (mt-core, mt-draft-format, mt-roster-format, mt-franchise-format,
-# mt-franchise, mt-draftgen, mt-store, mt-interop) join this workspace in the work
-# package that first needs them; see docs/PR-ROADMAP.md. No empty placeholders.
+# mt-franchise, mt-draftgen, mt-interop) join this workspace in the work package
+# that first needs them; see docs/PR-ROADMAP.md. No empty placeholders.
 [workspace]
-members = ["app/src-tauri"]
+members = ["app/src-tauri", "crates/mt-store"]
 resolver = "3"
 
 [workspace.package]

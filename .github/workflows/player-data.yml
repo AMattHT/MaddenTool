@@ -1,0 +1,68 @@
+# DG01 player database: Rust gates and a CLI smoke test on synthetic fixtures.
+# Real datasets are never downloaded in CI.
+name: Player data
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: player-data-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-2025
+          - name: Linux x64
+            runner: ubuntu-24.04
+          - name: macOS arm64
+            runner: macos-15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # rust-toolchain.toml pins the version; this installs it with its components.
+      - name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy -p mt-store --all-targets --locked -- -D warnings
+
+      - name: tests
+        run: cargo test -p mt-store --locked
+
+      - name: CLI smoke on synthetic fixtures
+        run: |
+          set -euo pipefail
+          db="$RUNNER_TEMP/players.db"
+          fx=crates/mt-store/tests/fixtures
+          cargo run -q -p mt-store --bin mt-data --locked -- import --db "$db" \
+            --format nflverse-draft-picks --file "$fx/synthetic-nflverse-draft-picks-v1.csv" \
+            --as-of 2026-10-28 --synthetic
+          cargo run -q -p mt-store --bin mt-data --locked -- import --db "$db" \
+            --format legacy-player-lookup --file "$fx/synthetic-legacy-player-lookup.csv" \
+            --as-of 2026-09-15 --synthetic
+          cargo run -q -p mt-store --bin mt-data --locked -- query --db "$db" --year 2001 > first.tsv
+          cargo run -q -p mt-store --bin mt-data --locked -- query --db "$db" --year 2001 > second.tsv
+          cmp first.tsv second.tsv
+          test "$(tail -n +2 first.tsv | wc -l | tr -d ' ')" = 6

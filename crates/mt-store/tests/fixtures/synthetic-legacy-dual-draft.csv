@@ -1,0 +1,19 @@
+﻿Last Name,First Name,College/Univ,Round,Pick,Draft Class,Position,Jersey,PhotoID,Player Assets ID,CommID,PLPO,Height,Weight,From,To,AP1,PB,St,wAV,League,Race,Home State,Wiki_Image_URL,PFR_Image_URL,isHOF
+Boomer,Synthetic,Plains State,1,2,1963,LT,,,,,,,,1963,1972,5,6,10,83,NFL,,,,,TRUE
+Boomer,Synthetic,Delta Tech,1,4,1963,DT,,,,,,,,1963,1972,5,6,10,83,AFL,,,,,TRUE
+Boomer,Synthetic Robert,Delta Tech,13,169,1963,DT,,,,,,,,1965,1975,0,0,8,51,NFL,,,,,FALSE
+Twin,Synthetic,Lake College,2,10,1963,HB,,,,,,,,1963,1968,0,1,4,22,AFL,,,,,FALSE
+Twin,Synthetic,Lake College,3,30,1963,HB,,,,,,,,1963,1968,0,1,4,22,NFL,,,,,FALSE
+Blank,Synthetic,Hill State,5,33,1963,E,,,,,,,,,,,,,,AFL,,,,,FALSE
+Blank,Synthetic,Hill State,4,45,1963,E,,,,,,,,1963,1965,0,0,1,4,NFL,,,,,FALSE
+Differ,Synthetic,River College,6,41,1963,G,,,,,,,,1963,1964,0,0,0,2,AFL,,,,,FALSE
+Differ,Synthetic,River College,7,90,1963,G,,,,,,,,1966,1970,0,0,3,12,NFL,,,,,FALSE
+Kilo,Synthetic Kent,Bay State,8,60,1963,T,,,,,,,,1963,1969,0,2,6,30,AFL,,,,,FALSE
+Kilo,Synthetic George,Bay State,9,115,1963,T,,,,,,,,1963,1969,0,2,6,30,NFL,,,,,FALSE
+Lima,Synthetic Billy,Pine College,10,75,1963,QB,,,,,,,,1963,1966,0,0,2,9,AFL,,,,,FALSE
+Lima,Synthetic Johnny,Pine College,11,140,1963,TE,,,,,,,,1965,1974,0,1,7,35,NFL,,,,,FALSE
+Mike,Synthetic,Twin Falls,12,90,1963,LB,,,,,,,,,,,,,,AFL,,,,,FALSE
+Mike,Synthetic,Twin Falls,14,180,1963,LB,,,,,,,,,,,,,,NFL,,,,,FALSE
+Mike,Synthetic,Twin Falls,15,195,1963,LB,,,,,,,,,,,,,,NFL,,,,,FALSE
+Oscar,Synthetic Bob,Cove State,16,120,1963,E,,,,,,,,1963,,0,0,0,,AFL,,,,,FALSE
+Oscar,Synthetic Robert,Cove State,17,222,1963,E,,,,,,,,1963,,0,0,0,,NFL,,,,,FALSE
