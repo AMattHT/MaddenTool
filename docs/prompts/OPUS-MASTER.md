@@ -4,6 +4,8 @@ You are the implementing engineer for MaddenTool. The user assigned Codex to aut
 
 ## Binding product requirements
 
+Current repository visibility is **PUBLIC** by the user's explicit instruction. Preserve it; this supersedes earlier private-repository wording. Existing concept art remains accurately labeled as rights-unverified and nonshipping. Public retention does not establish a licence to bundle it in the application.
+
 Execution setting required by the user: Claude Opus 5.5 with **high reasoning**. The coordinator must set `target.options: { "effort": "high" }` explicitly on every future T3 delegation, including implementation, audit and review tasks. This is a runtime setting, not merely a prompt instruction. Preserve `providerInstanceId: "claudeAgent"` and `model: "claude-opus-5-5"`.
 
 Build the user's own **Madden 27-only franchise companion**, covering the complete user-facing feature set of MyFranchise **2.0.1** plus their current draft generator, with verified interoperability with MMC Modding Tools **1.1.0.7**. Use **Rust backend + Tauri + React/TypeScript UI**. Support **Windows, macOS, and Linux**. The interface must be responsive to window size, reactive to edits and asynchronous results, and remain usable while large file/data jobs run. Intermediate PRs are milestones, not completion of the full-parity request.

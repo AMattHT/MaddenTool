@@ -40,6 +40,47 @@ test("the real manifest accounts for every tracked file", () => {
   assert.deepEqual(evaluate(trackedFiles, realManifest), []);
 });
 
+test("known concept art keeps its unverified, nonshipping rights records", () => {
+  const eaArt = [
+    "dg05-concept-a/assembled/A-scouting-desk-dark-1440x900.png",
+    "dg05-concept-a/assembled/A-scouting-desk-dark-800x600.png",
+    "dg05-concept-a/assembled/A-scouting-desk-spoilers-off-1440x900.png",
+    "dg05-concept-a/assembled/B-class-ledger-light-1440x900.png",
+    "dg05-concept-a/comparison.html",
+    "dg05-concept-b1/assembled/A-dark-1024x768.png",
+    "dg05-concept-b1/assembled/A-focus-detail.png",
+    "dg05-concept-b1/assembled/A-light-1024x768.png",
+    "dg05-concept-b1/assembled/A-light-1440x900.png",
+    "dg05-concept-b1/assembled/A-light-focus-1440x900.png",
+    "dg05-concept-b1/assembled/A-light-zoom200-960x540css.png",
+    "dg05-concept-b1/comparison.html",
+  ];
+  const generatedArt = [
+    "dg05-concept-a/higgsfield/A-scouting-desk-raw-1440x900.png",
+    "dg05-concept-a/higgsfield/B-class-ledger-raw-1440x900.png",
+  ];
+  for (const [paths, origin, source, rights] of [
+    [
+      eaArt,
+      "third-party",
+      /^EA Madden 27 development-trait artwork/,
+      /redistribution rights are not verified/,
+    ],
+    [generatedArt, "generated", /^Higgsfield job /, /right to redistribute is not verified/],
+  ]) {
+    for (const name of paths) {
+      const path = `docs/design/concepts/${name}`;
+      const entries = realManifest.entries.filter((entry) => entry.path === path);
+      assert.equal(entries.length, 1, path);
+      const [entry] = entries;
+      assert.equal(entry.origin, origin, path);
+      assert.equal(entry.ships, false, path);
+      assert.match(entry.source, source, path);
+      assert.match(entry.license, rights, path);
+    }
+  }
+});
+
 // New material must arrive with its own record, whatever its folder or extension.
 for (const path of [
   "ui/public/madden-27-logo.png",

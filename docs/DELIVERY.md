@@ -2,7 +2,7 @@
 
 ## Authorization
 
-The user approved the reviewed design and instructed implementation to begin. Approved scope: Madden 27 only; full MyFranchise/draft-tool feature parity; Rust + Tauri/React; responsive/reactive UI; Windows/macOS/Linux; private AMattHT/MaddenTool development; Opus 5.5 implementation; tstack PR workflow. PR merging is not authorized.
+The user approved the reviewed design and instructed implementation to begin. Approved scope: Madden 27 only; full MyFranchise/draft-tool feature parity; Rust + Tauri/React; responsive/reactive UI; Windows/macOS/Linux; public AMattHT/MaddenTool development (current user instruction; originally private); Opus 5.5 implementation; tstack PR workflow. PR merging is not authorized.
 
 - Design: `superpowers/specs/2026-11-01-maddentool-design.md`
 - Approved design SHA-256: `b73b95d9e3c8086fadb69987ba789e4199ada98e7c4daf8bdeefb9433a7b0411`. This hashes the approved working copy with CRLF line endings. Git stores it with LF, giving `ad56778ec8d6d97d59b96eae4e0940578084e7ff31b396d9ebd5be73b6fbc6b6`. The text is otherwise unchanged.
@@ -16,7 +16,7 @@ Status: **PR open and unmerged.** This is the foundation only; no game files can
 | Field | Value |
 |---|---|
 | Provider/model | `claudeAgent` / `claude-opus-5-5`, in T3 Code through the Claude Code harness |
-| Repository | `AMattHT/MaddenTool`, verified PRIVATE. `gh api user` returned `AMattHT`, ID `262685875` |
+| Repository | `AMattHT/MaddenTool`, verified PRIVATE at creation; now PUBLIC by explicit user instruction. `gh api user` returned `AMattHT`, ID `262685875` |
 | Base | `main` at `def90394db3d352d790dc4ebbd8b54dd3eef2db8` (metadata baseline) |
 | Branch | `feat/cross-platform-foundation` |
 | PR | https://github.com/AMattHT/MaddenTool/pull/1. The head SHA and live check state are on the PR; a commit cannot record its own SHA |
@@ -145,7 +145,7 @@ Other limits:
 - The retry proof uses a malformed response at the IPC layer. It does not exercise a real backend crash, and the 10-second timeout is only unit tested.
 - Installers were built but not installed. Packages and signing are WP11.
 - `npm audit` reports 12 moderate advisories, all in the dev-only lint stack through `minimatch`. `npm audit --omit=dev` reports 0. TypeScript is held at 6.0.3 and ESLint at 9.39.5 for lint plugin compatibility.
-- Four native jobs run on each PR update. macOS minutes are billed at a high multiplier on private repositories, so watch the Actions allowance.
+- Four native jobs run on each PR update. Keep their scope and usage explicit; the current user instruction is to keep the repository public.
 - The high-reasoning delegation preference in `docs/prompts/OPUS-MASTER.md` is committed and pushed as `ea67c86`.
 
 ### Next: WP01b dependencies
@@ -282,7 +282,8 @@ Status: **merged locally on a development branch, not pushed.** This brings `mai
 ### Decisions
 
 - **Workspace:** members `app/src-tauri` and `crates/mt-store`. Package fields, lints, release profile and `rust-toolchain.toml` (1.99.0) were already identical.
-- **Lockfile:** Cargo regenerated it from the union of both lockfiles. Every package and version from both sides is kept except `cc`: the foundation locked 1.10.0 and DG01 locked 1.11.0, and only one 1.x can be locked. 1.10.0 was kept because `libsqlite3-sys` 0.39.1 needs `^1.2.27` and the host's build-time `cc` users, including `embed-resource`, stay unchanged. So `mt-store` now compiles bundled SQLite with `cc` 1.10.0 instead of 1.11.0. Its tests and CLI smoke pass with it. In a whole-workspace build only, `hashlink` turns on `hashbrown`'s optional `foldhash` dependency. `tauri build` builds the host package alone, so the shipped binary's graph does not change.
+- **Lockfile:** Cargo regenerated it from the union of both lockfiles. Every package and version from both sides is kept except `cc`: the foundation locked 1.10.0 and DG01 locked 1.11.0, and a single compatible version was selected for this graph. 1.10.0 was kept because `libsqlite3-sys` 0.39.1 needs `^1.2.27` and the host's build-time `cc` users, including `embed-resource`, stay unchanged. So `mt-store` now compiles bundled SQLite with `cc` 1.10.0 instead of 1.11.0. Its tests and CLI smoke pass with it. In a whole-workspace build only, `hashlink` turns on `hashbrown`'s optional `foldhash` dependency. `tauri build` builds the host package alone, so the shipped binary's graph does not change.
+- **Test-only dependency edge:** `tempfile` resolves `getrandom` 0.3.4 instead of main's 0.4.3. This changes its development/test dependency edge, not the shipped host graph; both package versions remain recorded where required.
 - **Ledger and README:** both histories are kept. The pre-WP01a "Destination" placeholder from `main` is dropped, because the WP01a section replaced it.
 - **Provenance:** see the next section.
 
@@ -297,7 +298,7 @@ The stricter check found 54 problems on the plain merge: every new file was unli
 - `build_b1.py`: line 705 is the script's own public-content guard regex, not a path. The literal is split with adjacent raw strings, so the compiled pattern is identical (checked) and the scan no longer matches it. This is the only change to main's files outside the conflicts.
 - **Regression tests.** `check-provenance.test.mjs` now requires exact records for new mt-store data, fixtures and concept media or scripts, and still accepts new `.rs` and `.md` there.
 
-**Open, for the user:** passing the check does not settle whether the EA icons inside the concept frames, or the Higgsfield outputs, may stay in a public repository.
+**Current repository decision:** the user explicitly chose to keep the repository public after the existing EA concept artwork was explained. The concept material stays in Git with its accurate provenance. Usage rights remain unverified and these references do not ship; retaining them does not establish a licence or authorize bundling them in the app.
 
 ### Evidence (Windows 11 Pro 10.0.26200 x64, Rust 1.99.0, Node 24.16.0, local only)
 
@@ -314,3 +315,7 @@ The stricter check found 54 problems on the plain merge: every new file was unli
 That binary was built before this merge and not rebuilt, because the disk was nearly full. Its host source, `tauri.conf.json`, capabilities, host Cargo manifests and every host package in `Cargo.lock` are unchanged from what built it. The app and `ui` commits since then touched only tests.
 
 Still open: all four hosted native jobs and the three player-data jobs on the pushed head; Linux DOM and IPC through `tauri-driver`, including the POSIX cleanup tests; macOS rendering and IPC; and a release build of the combined tree. WP01b waits for the hosted gate.
+
+### Integration review follow-ups
+
+Independent review found the integration ready for publication to PR #1, with hosted CI still pending. The coordinator recorded the test-only `tempfile` dependency-edge change, updated public-visibility wording, and added a regression pinning all 12 EA-derived and two Higgsfield concept entries as nonshipping with unverified rights. No runtime source, Cargo graph or artwork bytes changed in these follow-ups.
