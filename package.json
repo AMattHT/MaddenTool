@@ -1,0 +1,37 @@
+{
+  "name": "maddentool",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "ui"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build -- --locked",
+    "tauri": "tauri",
+    "build:ui": "npm run build --workspace ui",
+    "dev:ui": "npm run dev --workspace ui",
+    "typecheck": "npm run typecheck --workspace ui",
+    "lint": "eslint ui scripts",
+    "test": "npm run test --workspace ui && node --test \"scripts/*.test.mjs\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "provenance:check": "node scripts/check-provenance.mjs",
+    "smoke:native": "node scripts/native-smoke.mjs",
+    "check:rust": "npm run build:ui && cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run provenance:check && npm run check:rust"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@tauri-apps/cli": "2.12.4",
+    "eslint": "9.39.5",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
+    "prettier": "3.9.10",
+    "typescript-eslint": "8.72.1"
+  }
+}

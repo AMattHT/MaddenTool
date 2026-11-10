@@ -50,7 +50,7 @@ Done when: routes and tools are confirmed or corrected in the ledger, stage rule
 
 ## 01. Foundation
 
-**01a Repository and CI.** New private `AMattHT/MaddenTool` repository under the verified authenticated account, retaining the brief after sanitizing. Workspace skeleton. CI for rustfmt, clippy, tests, and frontend format, lint, typecheck and tests. Tauri builds on Windows, macOS and Linux. Provenance manifest and check (`XP-015`). Root commit may establish metadata; product changes go through PRs.
+**01a Repository and CI.** `AMattHT/MaddenTool` repository under the verified authenticated account, retaining the brief after sanitizing. It was created private; the current explicit user instruction is to keep it public. Workspace skeleton. CI for rustfmt, clippy, tests, and frontend format, lint, typecheck and tests. Tauri builds on Windows, macOS and Linux. Provenance manifest and check (`XP-015`). Root commit may establish metadata; product changes go through PRs.
 
 **01b Shell and jobs.** Original app identity, responsive navigation, settings store, typed errors and generated bindings, job runner with progress and cancel, query invalidation, error and empty states. The first screen does real file selection and metadata inspection. Proof: viewport sweep from 800×600 to 1920×1080 and 200% zoom, axe scan, cancel test. Rows: `XP-004` to `XP-010`, `MF-SET-*`, shell rows.
 
