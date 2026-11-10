@@ -17,7 +17,9 @@ import {
   FatalWaitError,
   OTHER_APP_ORIGIN,
   TimeoutError,
+  WEBVIEW2_ARGUMENT_SOURCES,
   WEBVIEW2_DEBUG_ARGUMENTS,
+  WEBVIEW2_OBSERVED_SWITCHES,
   WEBVIEW2_PROFILE_PREFIX,
   captureOutput,
   classifyAclProbe,
@@ -42,6 +44,7 @@ import {
   waitForAppTarget,
   watchProcess,
   webDriverClient,
+  webView2LaunchEnvironment,
   withTimeout,
 } from "./smoke-harness.mjs";
 
@@ -790,6 +793,9 @@ test(
       assert.equal(diagnosis.inspectionError, undefined);
       assert.equal(typeof diagnosis.webView2Runtime, "object");
       assert.ok(Array.isArray(diagnosis.process.childProcesses));
+      assert.match(diagnosis.hostIntegrity, /^(Low|Medium|High|System)$/);
+      // A plain Node child has no WebView2 browser process.
+      assert.equal(diagnosis.webView2BrowserProcess, undefined);
     } finally {
       await stopProcess(child, "child");
     }
@@ -908,6 +914,64 @@ test("over real sockets, only the server with this profile's browser target is a
 test("the WebView2 arguments choose a free port and keep a log in the profile", () => {
   assert.match(WEBVIEW2_DEBUG_ARGUMENTS, /--remote-debugging-port=0( |$)/);
   assert.match(WEBVIEW2_DEBUG_ARGUMENTS, /--enable-logging/);
+});
+
+const argumentVariables = (env) =>
+  Object.entries(env).filter(
+    ([name]) => name.toUpperCase() === "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+  );
+
+test("the environment source keeps the local behaviour: the variable carries the flags", () => {
+  assert.deepEqual(WEBVIEW2_ARGUMENT_SOURCES, ["environment", "policy"]);
+  const env = webView2LaunchEnvironment(
+    {
+      PATH: "p",
+      webview2_additional_browser_arguments: "--inherited",
+      WEBVIEW2_USER_DATA_FOLDER: "x",
+    },
+    "C:\\profile",
+    "environment",
+  );
+  assert.deepEqual(argumentVariables(env), [
+    ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", WEBVIEW2_DEBUG_ARGUMENTS],
+  ]);
+  assert.equal(env.WEBVIEW2_USER_DATA_FOLDER, "C:\\profile");
+  assert.equal(env.PATH, "p");
+});
+
+test("the policy source sets no arguments variable, so only the machine policy can apply", () => {
+  const env = webView2LaunchEnvironment(
+    {
+      PATH: "p",
+      WebView2_Additional_Browser_Arguments: "--inherited",
+      webview2_user_data_folder: "x",
+    },
+    "C:\\profile",
+    "policy",
+  );
+  assert.deepEqual(argumentVariables(env), []);
+  // The run keeps its own profile, which the app's loader applies (observed on the hosted run).
+  const folders = Object.entries(env).filter(([name]) => /^WEBVIEW2_USER_DATA_FOLDER$/i.test(name));
+  assert.deepEqual(folders, [["WEBVIEW2_USER_DATA_FOLDER", "C:\\profile"]]);
+  assert.equal(env.PATH, "p");
+  assert.throws(() => webView2LaunchEnvironment({}, "C:\\profile", "registry"), /argument source/);
+  assert.throws(() => webView2LaunchEnvironment({}, "C:\\profile", undefined), /argument source/);
+});
+
+test("the native smoke refuses an unknown or missing argument source before launching", async () => {
+  const script = join(dirname(fileURLToPath(import.meta.url)), "native-smoke.mjs");
+  const missingBinary = join(tmpdir(), "maddentool-no-such-binary.exe");
+  for (const extra of [["--webview2-arguments", "registry"], ["--webview2-arguments"]]) {
+    const child = spawn(process.execPath, [script, "--binary", missingBinary, ...extra], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    const [code] = await once(child, "exit");
+    assert.equal(code, 1);
+    assert.match(stderr, /--webview2-arguments must be one of: environment, policy/);
+    assert.doesNotMatch(stderr, /binary not found/);
+  }
 });
 
 const scratch = () => mkdtempSync(join(tmpdir(), "maddentool-smoke-test-"));
@@ -1038,6 +1102,96 @@ test("the profile tells an unused override from a debug server that never starte
     classifyStartup({ ...live, mainWindowTitle: "Error", profile: { dataFolderCreated: false } }),
     "blocked-on-native-error-dialog",
   );
+});
+
+test("a missing browser log is told apart from one that cannot be read", () => {
+  const root = scratch();
+  try {
+    const data = join(root, "used", "EBWebView");
+    mkdirSync(data, { recursive: true });
+    assert.deepEqual(inspectWebView2Profile(join(root, "used")).logLines, [
+      "chrome_debug.log absent",
+    ]);
+    mkdirSync(join(data, "chrome_debug.log"));
+    assert.match(
+      inspectWebView2Profile(join(root, "used")).logLines[0],
+      /^chrome_debug\.log unreadable \(E[A-Z]+\)$/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a browser started without the debug switch is classified as such", () => {
+  const live = { runtimeVersions: ["156.0.4314.58"], mainWindowTitle: "MaddenTool" };
+  const profile = { dataFolderCreated: true, devToolsActivePort: "absent" };
+  const browser = (given) => ({
+    runtimeFolder: "156.0.4314.58",
+    switches: { "remote-debugging-port": given, "enable-logging": given, "user-data-dir": true },
+  });
+  assert.equal(
+    classifyStartup({ ...live, profile, browserProcess: browser(false) }),
+    "debug-arguments-not-applied",
+  );
+  assert.equal(
+    classifyStartup({ ...live, profile, browserProcess: browser(true) }),
+    "debug-server-not-started",
+  );
+  // Without a browser process to read, nothing is claimed about its switches.
+  assert.equal(
+    classifyStartup({ ...live, profile, browserProcess: null }),
+    "debug-server-not-started",
+  );
+  // An unused profile still explains more than the switches do.
+  assert.equal(
+    classifyStartup({
+      ...live,
+      profile: { dataFolderCreated: false },
+      browserProcess: browser(false),
+    }),
+    "webview2-profile-not-used",
+  );
+});
+
+test("only switch names on an allowlist are reported, never their values", () => {
+  assert.deepEqual(WEBVIEW2_OBSERVED_SWITCHES, [
+    "remote-debugging-port",
+    "enable-logging",
+    "user-data-dir",
+  ]);
+});
+
+test("the diagnosis carries integrity, browser switches and policy names", async () => {
+  const child = idleChild();
+  await once(child.stdout, "data");
+  try {
+    const browserProcess = {
+      runtimeFolder: "156.0.4314.58",
+      switches: { "remote-debugging-port": false, "enable-logging": false, "user-data-dir": true },
+    };
+    const diagnosis = await diagnoseStartup({
+      child,
+      state: watchProcess(child, "child"),
+      endpoint: { attempts: 2, answered: 0 },
+      profile: { dataFolderCreated: true, devToolsActivePort: "absent", logLines: [] },
+      inspect: async () => ({
+        runtime: { HKLM: "156.0.4314.58" },
+        mainWindowTitle: "MaddenTool",
+        childProcesses: ["msedgewebview2.exe"],
+        hostIntegrity: "High",
+        browserProcess,
+        webView2Policies: ["HKLM:AdditionalBrowserArguments"],
+      }),
+      debugArguments: "policy",
+    });
+    assert.equal(diagnosis.classification, "debug-arguments-not-applied");
+    assert.equal(diagnosis.debugArguments, "policy");
+    assert.equal(diagnosis.hostIntegrity, "High");
+    assert.deepEqual(diagnosis.webView2BrowserProcess, browserProcess);
+    assert.deepEqual(diagnosis.webView2Policies, ["HKLM:AdditionalBrowserArguments"]);
+  } finally {
+    await stopProcess(child, "child");
+  }
 });
 
 test("the diagnosis carries the profile's observations", async () => {

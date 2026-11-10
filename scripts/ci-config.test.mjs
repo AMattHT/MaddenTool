@@ -50,10 +50,60 @@ test("the Windows smoke runs only after the runtime has been verified", () => {
   assert.ok(verify !== -1 && verify < smoke);
 });
 
-test("Windows still has to pass the real smoke", () => {
-  const step = /- name: Native smoke \(Windows[^\n]*\r?\n\s+if:[^\n]*\r?\n\s+run: ([^\r\n]+)/.exec(
-    ci,
-  );
-  assert.equal(step?.[1], "npm run smoke:native");
+// Diagnostic evidence for the hosted Windows smoke, which a local run cannot stand in for.
+const stepBlock = (name) => {
+  const start = ci.indexOf(`- name: ${name}`);
+  assert.ok(start !== -1, `step "${name}" exists`);
+  const next = ci.indexOf("\n      - ", start + 1);
+  return ci.slice(start, next === -1 ? undefined : next);
+};
+
+test("the Windows binary's hash is logged before its smoke runs", () => {
+  const record = stepBlock("Record the built binary (Windows)");
+  assert.match(record, /if: runner\.os == 'Windows'/);
+  assert.match(record, /Get-FileHash -Algorithm SHA256 target[\\/]release[\\/]maddentool\.exe/);
+  assert.ok(ci.indexOf("Record the built binary (Windows)") < ci.indexOf("Native smoke (Windows"));
+});
+
+test("a failed Windows smoke keeps only the built executable, briefly", () => {
+  const upload = stepBlock("Keep the built binary of a failed Windows smoke");
+  // Only when the smoke itself failed: an earlier failure leaves no binary to keep.
+  assert.match(upload, /if: failure\(\) && steps\.windows-smoke\.outcome == 'failure'/);
+  assert.match(stepBlock("Native smoke (Windows, DOM and IPC)"), /\n\s+id: windows-smoke\b/);
+  assert.match(upload, /uses: actions\/upload-artifact@[0-9a-f]{40} # v\d+\.\d+\.\d+/);
+  const path = /\n\s+path: ([^\r\n]+)/.exec(upload)?.[1];
+  assert.equal(path, "target/release/maddentool.exe");
+  assert.match(upload, /if-no-files-found: error/);
+  const days = Number(/retention-days: (\d+)/.exec(upload)?.[1]);
+  assert.ok(days >= 1 && days <= 7, `retention-days ${days}`);
+  assert.ok(ci.indexOf("Native smoke (Windows") < ci.indexOf("Keep the built binary"));
+});
+
+const POLICY_HELPER = "node scripts/ci-windows-webview2-policy.mjs";
+
+test("Windows still has to pass the real smoke, run inside the machine-policy helper", () => {
+  const smoke = stepBlock("Native smoke (Windows, DOM and IPC)");
+  assert.match(smoke, /\n\s+if: runner\.os == 'Windows'\r?\n/);
+  const run = /\n\s+run: ([^\r\n]+)/.exec(smoke)?.[1];
+  assert.equal(run, POLICY_HELPER);
+  // The helper's exit code is the smoke's; nothing may soften or replace it.
   assert.doesNotMatch(ci, /continue-on-error/);
+  assert.doesNotMatch(smoke, /\|\||; *exit 0|\$LASTEXITCODE|env:/);
+});
+
+test("the machine-policy helper runs only in the Windows smoke step", () => {
+  assert.equal(ci.split("ci-windows-webview2-policy").length - 1, 1);
+  assert.equal(pkg.scripts["smoke:native"], "node scripts/native-smoke.mjs");
+  for (const name of [
+    "Native smoke (Linux, DOM under xvfb)",
+    "Native smoke (macOS, process start only)",
+  ]) {
+    assert.match(stepBlock(name), /npm run smoke:native/);
+    assert.doesNotMatch(stepBlock(name), /webview2-arguments|policy/i);
+  }
+});
+
+test("no workflow step writes the registry or a WebView2 override itself", () => {
+  assert.doesNotMatch(ci, /HKLM|HKCU|HKEY_|Registry::|reg(\.exe)? (add|delete)|ItemProperty/i);
+  assert.doesNotMatch(ci, /WEBVIEW2_|AdditionalBrowserArguments|--webview2-arguments/);
 });

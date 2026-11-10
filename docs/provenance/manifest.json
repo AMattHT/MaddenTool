@@ -95,6 +95,8 @@
     { "path": "ui/src/**/*.tsx", "origin": "original", "license": "UNLICENSED", "ships": true },
     { "path": "ui/src/**/*.css", "origin": "original", "license": "UNLICENSED", "ships": true },
 
+    { "path": "scripts/ci-windows-webview2-policy.mjs", "origin": "original", "license": "UNLICENSED", "ships": false, "notes": "Hosted Windows CI only. Sets and removes the maddentool.exe WebView2 browser-arguments machine policy around one smoke; refuses local, self-hosted and unelevated runs." },
+    { "path": "scripts/ci-windows-webview2-policy.test.mjs", "origin": "original", "license": "UNLICENSED", "ships": false, "notes": "Uses an in-memory registry; reads the real one only." },
     { "path": "scripts/*.mjs", "origin": "original", "license": "UNLICENSED", "ships": false },
     { "path": "scripts/*.ps1", "origin": "original", "license": "UNLICENSED", "ships": false },
     { "path": ".github/workflows/*.yml", "origin": "original", "license": "UNLICENSED", "ships": false },

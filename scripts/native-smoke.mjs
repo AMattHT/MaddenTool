@@ -3,6 +3,7 @@
 //
 //   npm run smoke:native -- [--binary path] [--evidence dir]
 //   npm run smoke:native -- --negative-probe <name>
+//   node scripts/native-smoke.mjs --webview2-arguments policy   (hosted CI helper only)
 //
 // Windows: drives WebView2 over the DevTools protocol (full proof).
 // Linux:   drives WebKitGTK through tauri-driver (run under xvfb; DOM proof).
@@ -23,7 +24,7 @@ import {
   INVALID_ARGUMENTS_PROBE,
   OTHER_APP_ORIGIN,
   UNREGISTERED_COMMAND,
-  WEBVIEW2_DEBUG_ARGUMENTS,
+  WEBVIEW2_ARGUMENT_SOURCES,
   captureOutput,
   classifyAclProbe,
   classifyUnregisteredProbe,
@@ -47,6 +48,7 @@ import {
   watchProcess,
   webDriverClient,
   webView2DataFolder,
+  webView2LaunchEnvironment,
 } from "./smoke-harness.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -61,6 +63,11 @@ const binary = resolve(
 );
 const evidenceDir = option("--evidence");
 const negativeProbe = option("--negative-probe");
+// Windows: where the browser's debug flags come from. "policy" is set only by
+// scripts/ci-windows-webview2-policy.mjs, which owns the machine policy for the run.
+const argumentSource = args.includes("--webview2-arguments")
+  ? option("--webview2-arguments")
+  : "environment";
 // Each Windows run gets a fresh WebView2 profile here, removed afterwards.
 const profileRoot = resolve(option("--profile-root") ?? join(ROOT, ".smoke", "webview2-profiles"));
 
@@ -190,15 +197,15 @@ async function smokeWindows() {
   try {
     child = spawn(binary, [], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        WEBVIEW2_USER_DATA_FOLDER: profile,
-        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: WEBVIEW2_DEBUG_ARGUMENTS,
-      },
+      env: webView2LaunchEnvironment(process.env, profile, argumentSource),
     });
   } catch (error) {
     // Some failures throw here instead of raising the process's error event.
-    const diagnosis = { classification: "spawn-error", spawnError: redact(error.message) };
+    const diagnosis = {
+      classification: "spawn-error",
+      debugArguments: argumentSource,
+      spawnError: redact(error.message),
+    };
     throw new Error(`The application could not start; startup=${JSON.stringify(diagnosis)}`);
   }
   const app = watchProcess(child, "The application");
@@ -240,6 +247,7 @@ async function smokeWindows() {
         readOutput,
         endpoint: { ...endpoint, devTools: discovery },
         profile: inspectWebView2Profile(profile),
+        debugArguments: argumentSource,
       });
       throw new Error(`${error.message}; startup=${JSON.stringify(diagnosis)}`, { cause: error });
     }
@@ -385,6 +393,7 @@ async function smokeWindows() {
         host: devTools.host,
         port: "chosen by the browser, read from this run's DevToolsActivePort",
         profile: "fresh per run, removed afterwards",
+        arguments: argumentSource,
       },
       facts,
       boundary,
@@ -460,6 +469,15 @@ async function smokeProcessOnly() {
   };
 }
 
+if (
+  !WEBVIEW2_ARGUMENT_SOURCES.includes(argumentSource) ||
+  (argumentSource === "policy" && !isWindows)
+) {
+  console.error(
+    `--webview2-arguments must be one of: ${WEBVIEW2_ARGUMENT_SOURCES.join(", ")} (policy on Windows only)`,
+  );
+  process.exit(1);
+}
 if (!existsSync(binary)) {
   console.error(`Application binary not found: ${binary}\nBuild it first with: npm run build`);
   process.exit(1);

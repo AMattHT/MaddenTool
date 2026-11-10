@@ -74,9 +74,30 @@ jobs:
         shell: pwsh
         run: ./scripts/ensure-webview2.ps1
 
+      # Identifies the exact executable the smoke ran, so a local run can be matched to it.
+      - name: Record the built binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Get-FileHash -Algorithm SHA256 target/release/maddentool.exe | Format-List Algorithm, Hash
+
+      # Hosted Windows runners are elevated, and Microsoft documents that an elevated WebView2 host
+      # ignores the browser-argument variable but honours machine policy. The helper refuses
+      # anywhere else, sets that policy for maddentool.exe for this one smoke, then removes it.
       - name: Native smoke (Windows, DOM and IPC)
         if: runner.os == 'Windows'
-        run: npm run smoke:native
+        run: node scripts/ci-windows-webview2-policy.mjs
+        id: windows-smoke
+
+      # Diagnostic only: the unsigned executable, so the hosted build can be run elsewhere.
+      # Nothing else from the runner, and it expires quickly.
+      - name: Keep the built binary of a failed Windows smoke
+        if: failure() && steps.windows-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-smoke-binary
+          path: target/release/maddentool.exe
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Native smoke (Linux, DOM under xvfb)
         if: runner.os == 'Linux'

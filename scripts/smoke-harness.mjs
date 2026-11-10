@@ -289,6 +289,29 @@ export async function removeWebView2Profile(root, profile, { timeoutMs = 10_000 
 export const WEBVIEW2_DEBUG_ARGUMENTS = "--remote-debugging-port=0 --enable-logging --v=0";
 export const webView2DataFolder = (profile) => join(profile, "EBWebView");
 
+/**
+ * Where the browser gets WEBVIEW2_DEBUG_ARGUMENTS. "environment" (the default) is the local run.
+ * "policy" sets no variable: Microsoft documents that an elevated host ignores WEBVIEW2_*
+ * variables and honours the HKLM AdditionalBrowserArguments policy, which only the hosted CI
+ * helper sets. Without the variable, that policy is the only source the browser can use.
+ */
+export const WEBVIEW2_ARGUMENT_SOURCES = ["environment", "policy"];
+
+/** The application's environment: this run's profile, and the flags if the source says so. */
+export function webView2LaunchEnvironment(base, profile, source) {
+  if (!WEBVIEW2_ARGUMENT_SOURCES.includes(source)) {
+    throw new Error(`Unknown WebView2 argument source: ${source}`);
+  }
+  // Windows names are case-insensitive, so an inherited variant must not survive beside ours.
+  const owned = /^WEBVIEW2_(ADDITIONAL_BROWSER_ARGUMENTS|USER_DATA_FOLDER)$/i;
+  const env = Object.fromEntries(Object.entries(base).filter(([name]) => !owned.test(name)));
+  env.WEBVIEW2_USER_DATA_FOLDER = profile;
+  if (source === "environment") {
+    env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = WEBVIEW2_DEBUG_ARGUMENTS;
+  }
+  return env;
+}
+
 /** `<port>\n/devtools/browser/<id>`, as Chromium writes it. Anything else is not trusted. */
 export function parseDevToolsActivePort(text) {
   const [portLine, path] = String(text).split(/\r?\n/);
@@ -360,8 +383,13 @@ export function inspectWebView2Profile(profile, { lineLimit = 12, lineLength = 3
       .filter((line) => /:(ERROR|FATAL):|devtools|remote.debugging/i.test(line))
       .slice(-lineLimit)
       .map((line) => redact(line.slice(0, lineLength)));
-  } catch {
-    logLines = ["chrome_debug.log not readable"];
+  } catch (error) {
+    // Absent means the browser was not given --enable-logging; unreadable means it was.
+    logLines = [
+      error.code === "ENOENT"
+        ? "chrome_debug.log absent"
+        : `chrome_debug.log unreadable (${error.code ?? "unknown"})`,
+    ];
   }
   return {
     dataFolderCreated: true,
@@ -689,6 +717,7 @@ export function classifyStartup({
   runtimeVersions,
   mainWindowTitle,
   profile,
+  browserProcess,
 } = {}) {
   if (spawnError) return "spawn-error";
   if (exit) return "early-exit";
@@ -697,14 +726,56 @@ export function classifyStartup({
   if (mainWindowTitle === "Error") return "blocked-on-native-error-dialog";
   // No browser has used the scoped folder: the override did not apply or no browser started.
   if (profile?.dataFolderCreated === false) return "webview2-profile-not-used";
+  // The browser process's own command line lacks the switch. Microsoft documents that an
+  // elevated host ignores WEBVIEW2_* environment overrides; this records the effect, not why.
+  if (browserProcess?.switches?.["remote-debugging-port"] === false) {
+    return "debug-arguments-not-applied";
+  }
   // The browser used the folder but never reported a debug server.
   if (profile?.devToolsActivePort === "absent") return "debug-server-not-started";
   return "debug-endpoint-unreachable";
 }
 
+/**
+ * Switches whose presence on the WebView2 browser process is reported, as true or false. Only
+ * these names are matched; no command line or switch value leaves the inspection.
+ */
+export const WEBVIEW2_OBSERVED_SWITCHES = [
+  "remote-debugging-port",
+  "enable-logging",
+  "user-data-dir",
+];
+
 // Registry values are Microsoft's documented detection for the Evergreen Runtime. Process
 // names only: command lines hold profile paths. Window title identifies a blocking dialog.
+// Integrity is the harness's own, which the application it spawned inherits: Microsoft
+// documents that a High (elevated) host ignores WEBVIEW2_* environment overrides. The browser
+// process is the app's msedgewebview2 child without --type; its runtime folder comes from its
+// executable path. Policy value names (never values) under the documented override keys.
 const windowsInspection = (pid) => `
+$integrity = @{ 'S-1-16-4096' = 'Low'; 'S-1-16-8192' = 'Medium'; 'S-1-16-12288' = 'High'; 'S-1-16-16384' = 'System' }
+$sid = [regex]::Match((@(& "$env:SystemRoot\\System32\\whoami.exe" /groups) -join ' '), 'S-1-16-\\d+').Value
+$label = $(if ($integrity.ContainsKey($sid)) { $integrity[$sid] } elseif ($sid) { $sid } else { 'unknown' })
+$browser = $null
+$candidate = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = ${pid} AND Name = 'msedgewebview2.exe'" |
+  Where-Object { $_.CommandLine -and $_.CommandLine -notmatch '\\s--type=' }) | Select-Object -First 1
+if ($candidate) {
+  $line = [string]$candidate.CommandLine
+  $switches = [ordered]@{}
+  foreach ($name in @(${WEBVIEW2_OBSERVED_SWITCHES.map((name) => `'${name}'`).join(", ")})) {
+    $switches[$name] = $line -match ('(^|\\s|")--' + [regex]::Escape($name) + '(=|\\s|"|$)')
+  }
+  $browser = [ordered]@{
+    runtimeFolder = [regex]::Match([string]$candidate.ExecutablePath, '\\\\(\\d+\\.\\d+\\.\\d+\\.\\d+)\\\\').Groups[1].Value
+    switches = $switches
+  }
+}
+$policies = @(foreach ($root in 'HKLM', 'HKCU') {
+  foreach ($kind in 'AdditionalBrowserArguments', 'BrowserExecutableFolder', 'ChannelSearchKind', 'ReleaseChannels', 'UserDataFolder') {
+    $key = Get-Item -Path "$($root):\\SOFTWARE\\Policies\\Microsoft\\Edge\\WebView2\\$kind" -ErrorAction SilentlyContinue
+    if ($key) { foreach ($name in $key.GetValueNames()) { "$($root):$($kind):$name" } }
+  }
+})
 $client = 'Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
 $runtime = @{}
 foreach ($key in "HKLM:\\SOFTWARE\\WOW6432Node\\$client", "HKLM:\\SOFTWARE\\$client", "HKCU:\\Software\\$client") {
@@ -725,7 +796,10 @@ $grandchildren = @($all | Where-Object { $childIds -contains $_.ParentProcessId 
   grandchildProcesses = $grandchildren
   overrides = @(@('WEBVIEW2_BROWSER_EXECUTABLE_FOLDER', 'WEBVIEW2_RELEASE_CHANNEL_PREFERENCE', 'WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER') |
     Where-Object { [Environment]::GetEnvironmentVariable($_) })
-} | ConvertTo-Json -Compress -Depth 3`;
+  hostIntegrity = $label
+  browserProcess = $browser
+  webView2Policies = $policies
+} | ConvertTo-Json -Compress -Depth 4`;
 
 function inspectWindowsProcess(pid, timeoutMs) {
   return new Promise((done) => {
@@ -760,6 +834,7 @@ export async function diagnoseStartup({
   profile,
   inspect = process.platform === "win32" ? inspectWindowsProcess : undefined,
   timeoutMs = 15_000,
+  debugArguments,
 }) {
   const running = child.pid !== undefined && !hasExited(child);
   const inspected = inspect && child.pid !== undefined ? await inspect(child.pid, timeoutMs) : {};
@@ -772,6 +847,9 @@ export async function diagnoseStartup({
     responding,
     runtime,
     overrides,
+    hostIntegrity,
+    browserProcess,
+    webView2Policies,
     inspectionError,
   } = inspected;
   return {
@@ -781,7 +859,10 @@ export async function diagnoseStartup({
       runtimeVersions: versions,
       mainWindowTitle,
       profile,
+      browserProcess,
     }),
+    ...(debugArguments ? { debugArguments } : {}),
+    ...(hostIntegrity ? { hostIntegrity } : {}),
     process: {
       running,
       ...(spawnError ? { spawnError: redact(spawnError) } : {}),
@@ -794,6 +875,8 @@ export async function diagnoseStartup({
     ...(profile ? { webView2Profile: profile } : {}),
     ...(runtime ? { webView2Runtime: runtime } : {}),
     ...(overrides?.length ? { webView2OverridesSet: overrides } : {}),
+    ...(browserProcess ? { webView2BrowserProcess: browserProcess } : {}),
+    ...(webView2Policies?.length ? { webView2Policies } : {}),
     ...(inspectionError ? { inspectionError: redact(inspectionError) } : {}),
     endpoint,
     output: readOutput?.() ?? "",
